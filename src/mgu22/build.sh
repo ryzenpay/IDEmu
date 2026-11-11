@@ -1,9 +1,15 @@
-#!/bin/zsh
-# Compila as peças do iDrive 8: aarch64 (glibc do firmware) para o guest e arm64 macOS para o host. Uso: build.sh <sysroot> <saida>
+#!/bin/bash
+# Compila as peças do iDrive 8: aarch64 (glibc do firmware) para o guest e o host (mguhost + qemushm).
+# Uso: build.sh <sysroot> <saida>      (o sysroot é a raiz extraída do firmware, de onde vêm libc.so.6 e libwayland-*)
 set -e
 cd "$(dirname "$0")"
 SYS=$1; OUT=$2; mkdir -p $OUT
-LLD=${LLD:-$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/gcc-ld/ld.lld}
+find_lld() {  # ld.lld: o do ambiente, o do PATH, o do rustup (mac ou linux); na falta deles, o build usa ziglang
+  [ -n "$LLD" ] && return 0
+  LLD=$(command -v ld.lld || true)
+  [ -n "$LLD" ] || LLD=$(ls "$HOME"/.rustup/toolchains/*/lib/rustlib/*/bin/gcc-ld/ld.lld 2>/dev/null | head -1)
+}
+find_lld
 CF=(-target aarch64-linux-gnu -ffreestanding -fPIC -O2 -fno-stack-protector -fno-builtin-malloc -Wno-everything)
 LD=($LLD -shared -z noexecstack --hash-style=gnu)
 EX=($LLD --dynamic-linker=/lib/ld-linux-aarch64.so.1 -z noexecstack --hash-style=gnu --unresolved-symbols=ignore-in-shared-libs)
@@ -30,5 +36,12 @@ clang $CF -c hmihook.c -o $OUT/hmihook.o
 $LD -soname libidemuhmi.so -o $OUT/libidemuhmi.so $OUT/hmihook.o $L -l:libc.so.6
 clang $CF -c idemuwl.c -o $OUT/idemuwl.o
 $EX -o $OUT/idemuwl $OUT/crt.o $OUT/idemuwl.o $L -l:libc.so.6 -l:libwayland-server.so.0 -l:libivi-application.so.1 -l:libivi-controller.so.1
-clang -O2 -Wno-everything mguhost.c -o $OUT/mguhost
-clang -O2 -Wno-everything -dynamiclib qemushm.c -o $OUT/qemushm.dylib
+# o host: mguhost (renderizador ANGLE) e qemushm (interpose/LD_PRELOAD do QEMU). No Linux, o ANGLE pode ser o do Chromium
+# (libEGL.so + libGLESv2.so) ou a Mesa do sistema (libEGL.so.1 + libGLESv2.so.2) — o mguhost procura os dois nomes.
+if [ "$(uname)" = Darwin ]; then
+  clang -O2 -Wno-everything mguhost.c -o $OUT/mguhost
+  clang -O2 -Wno-everything -dynamiclib qemushm.c -o $OUT/qemushm.dylib
+else
+  cc -O2 -Wno-everything mguhost.c -o $OUT/mguhost -ldl -lpthread
+  cc -O2 -Wno-everything -shared -fPIC qemushm.c -o $OUT/qemushm.so -ldl
+fi

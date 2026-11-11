@@ -1,5 +1,5 @@
 """Servidor HTTP local do IDEmu (API em docs/API.md + arquivos estáticos da GUI web)."""
-import os, re, subprocess, json, time, shutil, threading, traceback, mimetypes, datetime
+import os, re, subprocess, json, time, shutil, sys, threading, traceback, mimetypes, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from . import catalog, builder, runtime, codegen, coding, coding7, coding8, stats, mgu, mgu7, phone, cluster, cic, vin, sysfiles
@@ -455,9 +455,32 @@ def get_stats():
     if _STATS is None: _STATS = stats.Sampler(APP, APP.env_dir)
     return _STATS
 
+def open_cmd(target):
+    """Comando que abre um arquivo/pasta/URL no app padrão do sistema (open no macOS; no Linux, wslview → Windows ou xdg-open)."""
+    if sys.platform == 'darwin': return ['open', target]
+    return [shutil.which('wslview') or shutil.which('xdg-open') or 'xdg-open', target]
+
 def native_pick(kind, prompt='', start=None):
-    """Seletor nativo do macOS (osascript). Devolve o caminho escolhido, ou None se o usuário cancelar. Levanta ApiError se não houver como abrir o diálogo."""
+    """Seletor nativo de arquivos (osascript no macOS, zenity/kdialog no Linux). Devolve o caminho escolhido, ou None se o usuário cancelar. Levanta ApiError se não houver como abrir o diálogo."""
     import subprocess
+    if sys.platform != 'darwin':
+        tool = shutil.which('zenity') or shutil.which('kdialog')
+        if not tool: raise ApiError('seletor nativo indisponível neste sistema', 501)
+        base = os.path.expanduser(start) if start and os.path.isdir(os.path.expanduser(start)) else None
+        if tool.endswith('zenity'):
+            cmd = [tool, '--file-selection', '--title=%s' % (prompt or 'Escolher')]
+            if kind == 'folder': cmd.append('--directory')
+            if kind == 'files': cmd.append('--multiple')
+            if base: cmd.append('--filename=%s/' % base)
+        else:
+            cmd = [tool] + (['--multiple'] if kind == 'files' else [])
+            if kind == 'folder': cmd += ['--getexistingdirectory', base or os.path.expanduser('~')]
+            else: cmd += ['--getopenfilename', base or os.path.expanduser('~'), '', prompt or '']
+        try: r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        except FileNotFoundError: raise ApiError('seletor nativo indisponível neste sistema', 501)
+        except subprocess.TimeoutExpired: return None
+        if r.returncode != 0: return None                                  # 1 = cancelado (zenity e kdialog)
+        return r.stdout.strip().replace('|', '\n') or None                 # kdialog separa os múltiplos com |
     q = lambda x: '"' + str(x).replace('\\', '\\\\').replace('"', '\\"') + '"'
     loc = ''
     if start and os.path.isdir(os.path.expanduser(start)): loc = ' default location (POSIX file %s)' % q(os.path.expanduser(start))
@@ -629,7 +652,7 @@ class H(BaseHTTPRequestHandler):
                 if len(P) > 3 and P[3] == 'reveal':
                     if m != 'POST': raise ApiError('use POST', 405)
                     os.makedirs(dd, exist_ok=True)
-                    r = subprocess.run(['open', dd], capture_output=True, text=True)
+                    r = subprocess.run(open_cmd(dd), capture_output=True, text=True)
                     if r.returncode: raise ApiError('não consegui abrir a pasta: %s' % r.stderr.strip()[:160], 500)
                     return {'ok': True}
                 fl = cic.userfiles_list(A.env_dir(eid))
@@ -812,6 +835,10 @@ def serve(host='127.0.0.1', port=8765, open_browser=True):
 
 def _open(url):
     import subprocess
+    if sys.platform != 'darwin':
+        p = shutil.which('wslview') or shutil.which('xdg-open')
+        if p: subprocess.Popen([p, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); return
+        import webbrowser; webbrowser.open(url); return
     for app in ('Google Chrome', 'Chromium', 'Microsoft Edge', 'Brave Browser'):
         if os.path.isdir('/Applications/%s.app' % app):
             subprocess.Popen(['open', '-na', app, '--args', '--app=' + url, '--window-size=1400,900']); return

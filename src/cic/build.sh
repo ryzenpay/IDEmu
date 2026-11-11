@@ -1,11 +1,22 @@
 #!/bin/bash
 # Compila o qemu-system-sh4 do IDEmu (placa "cic"): copia src/cic para a árvore do QEMU e roda o ninja.
+# A árvore do QEMU 11.1.2 vem de ~/id4-qemu (ou ~/idemu-qemu, ou CIC_QEMU); o tarball oficial pode ser passado como argumento:
+#   src/cic/build.sh <qemu-11.1.2.tar.xz>     (não baixa nada)
 set -e
-Q=${CIC_QEMU:-$HOME/id4-qemu/qemu-11.1.2}
-B=${CIC_BUILD:-$HOME/id4-qemu/build}
+Q=${CIC_QEMU:-}
+if [ -z "$Q" ]; then for d in "$HOME/id4-qemu/qemu-11.1.2" "$HOME/idemu-qemu/qemu-11.1.2"; do [ -d "$d" ] && Q=$d && break; done; Q=${Q:-$HOME/id4-qemu/qemu-11.1.2}; fi
+B=${CIC_BUILD:-$(dirname "$Q")/build-cic}
 H=$(cd "$(dirname "$0")" && pwd)
+if [ ! -d "$Q" ]; then
+  [ -n "${1:-}" ] || { echo "árvore do QEMU 11.1.2 não encontrada em $Q: passe o tarball oficial como argumento ou aponte CIC_QEMU (veja tools/qemu/build.sh)"; exit 1; }
+  mkdir -p "$(dirname "$Q")" && tar -C "$(dirname "$Q")" -xf "$1"
+fi
+[ -x "$HOME/.local/bin/meson" ] && export PATH="$HOME/.local/bin:$PATH"   # meson por pip (Ubuntu 22.04)
+command -v ninja >/dev/null || { echo "falta o ninja (apt install ninja-build / brew install ninja)"; exit 1; }
+# sed -i portátil (BSD/macOS exige sufixo separado, GNU/Linux não aceita '' separado): grava um .bak e o apaga
+sedi() { sed -i.idemu-bak "$@" && rm -f "${@: -1}.idemu-bak"; }
 cp "$H"/cic.c "$H"/cic_soc.c "$H"/cic_scif.c "$H"/cic_pci.c "$H"/cic.h "$Q/hw/sh4/"
-grep -q CONFIG_CIC "$Q/hw/sh4/meson.build" || sed -i '' "s|^hw_arch += {'sh4': sh4_ss}|sh4_ss.add(when: 'CONFIG_CIC', if_true: files('cic.c', 'cic_soc.c', 'cic_scif.c', 'cic_pci.c'))\nhw_arch += {'sh4': sh4_ss}|" "$Q/hw/sh4/meson.build"
+grep -q CONFIG_CIC "$Q/hw/sh4/meson.build" || sedi "s|^hw_arch += {'sh4': sh4_ss}|sh4_ss.add(when: 'CONFIG_CIC', if_true: files('cic.c', 'cic_soc.c', 'cic_scif.c', 'cic_pci.c'))\nhw_arch += {'sh4': sh4_ss}|" "$Q/hw/sh4/meson.build"
 grep -q "config CIC" "$Q/hw/sh4/Kconfig" || cat >> "$Q/hw/sh4/Kconfig" <<'EOK'
 
 config CIC
@@ -102,7 +113,7 @@ s = s[:i] + "/* cic: hypercall do IDEmu (trapa #0xC3) */\nextern bool (*sh4_cic_
 open(h, 'w').write(s)
 EOP
 # SH-4A tem movua.l (acesso desalinhado, pode cruzar páginas): wrap 32 bits em vez de abort
-grep -q "pointer_wrap = cpu_pointer_wrap_uint32" "$Q/target/sh4/cpu.c" || sed -i '' 's/\.pointer_wrap = cpu_pointer_wrap_notreached/.pointer_wrap = cpu_pointer_wrap_uint32/' "$Q/target/sh4/cpu.c"
+grep -q "pointer_wrap = cpu_pointer_wrap_uint32" "$Q/target/sh4/cpu.c" || sedi 's/\.pointer_wrap = cpu_pointer_wrap_notreached/.pointer_wrap = cpu_pointer_wrap_uint32/' "$Q/target/sh4/cpu.c"
 # URC (contador aleatório da UTLB) nunca deve alcançar URB: as entradas URB..63 são "fixas" (wired)
 grep -q "urc >= urb" "$Q/target/sh4/helper.c" || python3 - "$Q/target/sh4/helper.c" <<'EOP'
 import sys
@@ -111,7 +122,7 @@ s = s.replace('if ((urb > 0 && urc > urb) || urc > (UTLB_SIZE - 1))', 'if ((urb 
 open(p, 'w').write(s)
 EOP
 # SH7785 no modo de endereçamento de 32 bits: o PPN da UTLB vai até o bit 31 (o QEMU corta em 29 bits e joga a janela PCI em 0x1bxxxxxx)
-grep -q "cic: PPN32" "$Q/target/sh4/helper.c" || { sed -i '' 's/(mem_value \& 0x1ffffc00) >> 10/(mem_value \& 0xfffffc00) >> 10; \/* cic: PPN32 *\//' "$Q/target/sh4/helper.c"; sed -i '' 's/#define PTEL_PPN_BITS (19)/#define PTEL_PPN_BITS (22)/' "$Q/target/sh4/cpu.h"; }
+grep -q "cic: PPN32" "$Q/target/sh4/helper.c" || { sedi 's/(mem_value \& 0x1ffffc00) >> 10/(mem_value \& 0xfffffc00) >> 10; \/* cic: PPN32 *\//' "$Q/target/sh4/helper.c"; sedi 's/#define PTEL_PPN_BITS (19)/#define PTEL_PPN_BITS (22)/' "$Q/target/sh4/cpu.h"; }
 # interrupções IRL (INTEVT 0x200..0x3e0) têm nível fixo codificado no vetor: nível = (0xf0 - (vetor-0x200)/2) >> 4;
 # o sh_intc ignora prioridade (FIXME deles), o que gera tempestade quando o ISR roda com IMASK == nível
 grep -q "cic: IRL" "$Q/hw/intc/sh_intc.c" || python3 - "$Q/hw/intc/sh_intc.c" <<'EOP'
@@ -136,5 +147,10 @@ s = s.replace("        case 0x80: /* Erase */\n        case 0x90: /* Autoselect 
               "        case 0xC0: /* cic: PPB */\n            pfl->cmd = 0xC0; pfl->wcycle = 0; pfl->ppb_exit = 0;\n            return;\n        case 0x80: /* Erase */\n        case 0x90: /* Autoselect */\n        case 0xA0: /* Program */\n            pfl->cmd = cmd;\n            trace_pflash_write_start(pfl->name, cmd);\n            break;", 1)
 open(p, 'w').write(s)
 EOP
+if [ ! -f "$B/build.ninja" ]; then
+  if [ "$(uname)" = Darwin ]; then PY=$(command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3); else PY=$(command -v python3); fi
+  mkdir -p "$B" && cd "$B" && "$Q/configure" --python="$PY" --target-list=sh-softmmu --disable-docs --disable-guest-agent --disable-tools --disable-gtk --disable-sdl --disable-vnc --disable-curses --disable-rust --disable-user --disable-linux-user --disable-bsd-user --without-default-features --enable-tcg
+fi
 cd "$B" && ninja qemu-system-sh4
-cp "$B/qemu-system-sh4" "$H/../../bin/qemu-system-sh4" 2>/dev/null || true
+mkdir -p "$H/../../bin"
+cp "$B/qemu-system-sh4" "$H/../../bin/qemu-system-sh4.new" && mv "$H/../../bin/qemu-system-sh4.new" "$H/../../bin/qemu-system-sh4"

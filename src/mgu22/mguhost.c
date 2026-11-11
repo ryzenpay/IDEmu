@@ -27,7 +27,7 @@ E(void *, GetPlatformDisplay, unsigned, void *, const intptr_t *) E(int, Initial
 E(int, ChooseConfig, void *, const int *, void **, int, int *) E(int, GetConfigAttrib, void *, void *, int, int *)
 E(void *, CreateContext, void *, void *, void *, const int *) E(int, DestroyContext, void *, void *)
 E(void *, CreatePbufferSurface, void *, void *, const int *) E(int, DestroySurface, void *, void *)
-E(int, MakeCurrent, void *, void *, void *, void *) E(int, SwapBuffers, void *, void *) E(int, GetError, void) E(int, WaitGL, void)
+E(int, MakeCurrent, void *, void *, void *, void *) E(int, SwapBuffers, void *, void *) E(int, GetError, void) E(int, WaitGL, void) E(void *, GetDisplay, void *)
 #undef E
 static void *dpy;
 #define GEN_DECL
@@ -505,16 +505,32 @@ int main(int argc, char **argv) {
   ramsz = (ul)atol(argv[2]) << 20; outdir = argv[3];
   int fd = shm_open(argv[1], O_RDWR); if (fd < 0) { perror("ram"); return 1; }
   ram = mmap(0, ramsz, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0); if (ram == MAP_FAILED) { perror("mmap"); return 1; }
-  char b[2048]; snprintf(b, sizeof b, "%s/libEGL.dylib", argv[4]); hegl = dlopen(b, RTLD_NOW | RTLD_GLOBAL);
-  snprintf(b, sizeof b, "%s/libGLESv2.dylib", argv[4]); hgl = dlopen(b, RTLD_NOW | RTLD_GLOBAL);
+  char b[2048];
+  const char *egl_names[][2] = { { "libEGL.dylib", "libGLESv2.dylib" }, { "libEGL.so", "libGLESv2.so" }, { "libEGL.so.1", "libGLESv2.so.2" } };   // ANGLE no Mac, ANGLE do Linux (Chromium), Mesa
+  for (int ni = 0; ni < 3 && (!hegl || !hgl); ni++) {
+    snprintf(b, sizeof b, "%s/%s", argv[4], egl_names[ni][0]); hegl = dlopen(b, RTLD_NOW | RTLD_GLOBAL);
+    snprintf(b, sizeof b, "%s/%s", argv[4], egl_names[ni][1]); hgl = dlopen(b, RTLD_NOW | RTLD_GLOBAL);
+    if (!hegl || !hgl) { if (hegl) { dlclose(hegl); hegl = 0; } if (hgl) { dlclose(hgl); hgl = 0; } }
+  }
   if (!hegl || !hgl) { fprintf(stderr, "ANGLE: %s\n", dlerror()); return 1; }
   egp = dlsym(hegl, "eglGetProcAddress");
 #define EL(N) e_##N = dlsym(hegl, "egl" #N)
   EL(GetPlatformDisplay); EL(Initialize); EL(BindAPI); EL(ChooseConfig); EL(GetConfigAttrib); EL(CreateContext); EL(DestroyContext);
-  EL(CreatePbufferSurface); EL(DestroySurface); EL(MakeCurrent); EL(SwapBuffers); EL(GetError); EL(WaitGL);
-  intptr_t at[] = { 0x3203, 0x3489, 0x3038, 0 };
-  dpy = e_GetPlatformDisplay(0x3202, 0, at); int ma = 0, mi = 0;
-  if (!e_Initialize(dpy, &ma, &mi)) { fprintf(stderr, "eglInitialize falhou\n"); return 1; }
+  EL(CreatePbufferSurface); EL(DestroySurface); EL(MakeCurrent); EL(SwapBuffers); EL(GetError); EL(WaitGL); EL(GetDisplay);
+  int ma = 0, mi = 0;
+#ifdef __APPLE__
+  intptr_t at[] = { 0x3203, 0x3489, 0x3038, 0 };   // ANGLE_PLATFORM_TYPE_METAL
+  dpy = e_GetPlatformDisplay(0x3202, 0, at);
+#else
+  { intptr_t types[] = { 0x3450 /* ANGLE_PLATFORM_TYPE_VULKAN */, 0x320D /* ANGLE_PLATFORM_TYPE_OPENGL */, 0x3206 /* DEFAULT */ };   // sem Metal: Vulkan (WSLg/D3D12 ou llvmpipe) e depois OpenGL
+    for (unsigned ti = 0; ti < sizeof types / sizeof *types && !dpy; ti++) {
+      intptr_t at[] = { 0x3203, types[ti], 0 };
+      dpy = e_GetPlatformDisplay ? e_GetPlatformDisplay(0x3202, 0, at) : 0;
+      if (dpy && !e_Initialize(dpy, &ma, &mi)) dpy = 0;      // backend não disponível neste driver: tenta o próximo
+    } }
+  if (!dpy) dpy = e_GetDisplay(0);   // não é ANGLE (Mesa do sistema?): o display EGL padrão
+#endif
+  if (!dpy || !e_Initialize(dpy, &ma, &mi)) { fprintf(stderr, "eglInitialize falhou\n"); return 1; }
   e_BindAPI(0x30A0); load_gl();
   fprintf(stderr, "[mguhost] ANGLE EGL %d.%d pronto, RAM %lu MiB\n", ma, mi, ramsz >> 20);
   pthread_t it; pthread_create(&it, 0, input_thread, 0);

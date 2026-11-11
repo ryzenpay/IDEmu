@@ -1,9 +1,18 @@
-// glhost7: renderizador no Mac para o iDrive 7. Recebe o fluxo EGL/GLES3 do guest (gles_guest.c) por um socket
-// unix do QEMU (ttyS1), executa em OpenGL 4.1 core (CGL, fora da tela) e grava cada quadro em <saida>/frame.rgba.
+// glhost7: renderizador no host para o iDrive 7. Recebe o fluxo EGL/GLES3 do guest (gles_guest.c) por um socket
+// unix do QEMU (ttyS1), executa em OpenGL 4.1 core (no Mac, CGL; no Linux, EGL sem janela) e grava cada quadro em <saida>/frame.rgba.
 // Uso: glhost7 <socket do QEMU> <pasta de saída>
+#ifndef __APPLE__
+#define _GNU_SOURCE             /* memmem */
+#endif
 #define GL_SILENCE_DEPRECATION 1
+#ifdef __APPLE__
 #include <OpenGL/OpenGL.h>
 #include <OpenGL/gl3.h>
+#else
+#include <GL/glew.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#endif
 #include <stdio.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -56,7 +65,15 @@ static void rec_close(void) {
 static void idle_wait(unsigned *n) {                 // espera curta: gira um pouco (latência baixa quando o guest está ativo) e depois dorme
   if (H && at_hdr) H->host_idle = 1;
   if (stop_rec && at_hdr) rec_close();
-  if (++*n < 400) { __asm__ volatile("yield" ::: "memory"); return; }
+  if (++*n < 400) {
+#if defined(__aarch64__)
+    __asm__ volatile("yield" ::: "memory");
+#elif defined(__x86_64__) || defined(__i386__)
+    __asm__ volatile("pause" ::: "memory");
+#else
+    __asm__ volatile("" ::: "memory");
+#endif
+    return; }
   if (*n < 4000) { usleep(30); return; }
   usleep(600);
 }
@@ -286,9 +303,32 @@ static void del1(int kind, GLuint r) {
 }
 
 static void init_gl(void) {
+#ifdef __APPLE__
   CGLPixelFormatAttribute at[] = { kCGLPFAOpenGLProfile, (CGLPixelFormatAttribute)kCGLOGLPVersion_GL4_Core, kCGLPFAAccelerated, kCGLPFAColorSize, (CGLPixelFormatAttribute)24, (CGLPixelFormatAttribute)0 };
   CGLPixelFormatObj pf; GLint n; if (CGLChoosePixelFormat(at, &pf, &n) || !pf) die("sem formato de pixel GL 4.1");
   CGLContextObj ctx; if (CGLCreateContext(pf, NULL, &ctx)) die("CGLCreateContext"); CGLSetCurrentContext(ctx);
+#else   // EGL sem janela (surfaceless quando não há DISPLAY): o mesmo GL 4.1 core da CGL, fora da tela
+  static const int pattr[] = { EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE };
+  EGLDisplay d = EGL_NO_DISPLAY; EGLint maj = 0, mi = 0, n = 0; EGLConfig cfg = NULL;
+  if (!eglBindAPI(EGL_OPENGL_API)) die("eglBindAPI(OPENGL)");
+#ifdef EGL_PLATFORM_SURFACELESS_MESA
+  if (getenv("DISPLAY") == NULL) d = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+  if (d != EGL_NO_DISPLAY && (!eglInitialize(d, &maj, &mi) || !eglChooseConfig(d, pattr, &cfg, 1, &n) || !n)) { eglTerminate(d); d = EGL_NO_DISPLAY; cfg = NULL; }   // surfaceless sem pbuffer: cai para o display padrão
+#endif
+  if (d == EGL_NO_DISPLAY) {
+    d = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (!eglInitialize(d, &maj, &mi)) die("eglInitialize (sem DISPLAY? verifique o WSLg)");
+    if (!eglChooseConfig(d, pattr, &cfg, 1, &n) || !n) die("sem config EGL_OPENGL");
+  }
+  EGLint cattr[] = { EGL_CONTEXT_MAJOR_VERSION, 4, EGL_CONTEXT_MINOR_VERSION, 1, EGL_NONE };
+  EGLContext c = eglCreateContext(d, cfg, EGL_NO_CONTEXT, cattr);
+  if (c == EGL_NO_CONTEXT) die("eglCreateContext GL 4.1 core");
+  if (!eglMakeCurrent(d, EGL_NO_SURFACE, EGL_NO_SURFACE, c)) {   // alguns drivers exigem um pbuffer mínimo
+    EGLSurface s = eglCreatePbufferSurface(d, cfg, (EGLint[]){ EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE });
+    if (s == EGL_NO_SURFACE || !eglMakeCurrent(d, s, s, c)) die("eglMakeCurrent");
+  }
+  if (glewInit() != GLEW_OK) die("glewInit");
+#endif
   fprintf(stderr, "glhost7: %s | %s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
   glGenVertexArrays(1, &vao0); glBindVertexArray(vao0);
   glEnable(GL_PROGRAM_POINT_SIZE);

@@ -7,10 +7,12 @@ barramento CAN virtual, GPS simulado e acesso SSH ao console da head unit virtua
 ## Uso rápido
 
 ```bash
-cd ~/Desktop/IDEmu
 ./IDEmu.command            # abre o IDEmu numa janela do Electron (precisa de: cd electron && npm install); sem Electron, abre no navegador
 python3 -m idemu gui       # só o servidor + navegador (http://127.0.0.1:8765)
 ```
+
+No Linux, veja a seção "Running on Linux" do [README.md](README.md) (pacotes, compilação do QEMU e dos renderizadores): o IDEmu também roda em
+Linux x86-64 (desenvolvido e testado em WSL2/Ubuntu 22.04; o iDrive 8 roda por TCG, e os seletores de arquivo usam zenity/kdialog).
 
 A interface abre em inglês; o seletor de idioma no topo troca para português do Brasil (os nomes em negrito abaixo são os dessa versão).
 

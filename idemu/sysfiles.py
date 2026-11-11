@@ -263,8 +263,19 @@ def reveal(env, env_dir, rel):
     try:
         d = _need(env, env_dir); p = resolve(d, rel)
     except ValueError as e: raise ApiError(str(e), 400)
-    r = subprocess.run(['open', '-R', p] if os.path.isfile(p) else ['open', p], capture_output=True, text=True)
-    if r.returncode: raise ApiError('não consegui abrir o Finder: %s' % r.stderr.strip()[:160], 500)
+    if sys.platform == 'darwin':
+        cmd, name = (['open', '-R', p] if os.path.isfile(p) else ['open', p]), 'Finder'
+    elif shutil.which('wslview'):                                   # WSL: abre o Explorer do Windows (com o arquivo selecionado)
+        cmd, name = ['wslview', p], 'Explorer'
+    else:
+        fm = shutil.which('nautilus') or shutil.which('dolphin')
+        cmd = [fm, '--select', p] if (os.path.isfile(p) and fm) else [shutil.which('xdg-open') or 'xdg-open', p]
+        name = 'gerenciador de arquivos'
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        raise ApiError('não consegui abrir o %s: comando indisponível' % name, 500)
+    if r.returncode: raise ApiError('não consegui abrir o %s: %s' % (name, r.stderr.strip()[:160]), 500)
     return {'ok': True}
 
 def remove(env, env_dir):

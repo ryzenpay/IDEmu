@@ -12,7 +12,11 @@ static msurf_t m_lay; static int m_lv,m_lx,m_ly,m_lw,m_lh; static GLuint c_tex,c
 typedef struct { int z,x,y,state; GLuint tex; unsigned last; } mtile_t;   /* state: 0 novo, 1 carregado, 2 pedido ao serviço */
 #define NTILES 192
 static mtile_t mt[NTILES]; static unsigned mclock;
+#ifdef __APPLE__
 static CGLContextObj mapctx,mainctx;
+#else
+static GLXContext mapctx,mainctx; static Display *mdpy; static GLXDrawable mdraw;   /* contexto próprio compartilhado com o do HMI (glX), para não mexer no estado espelhado do guest */
+#endif
 static double m_lat=-23.5505,m_lon=-46.6333,m_tlat=-23.5505,m_tlon=-46.6333,m_hdg,m_thdg; static float m_zoom=16; static int m_headup,m_night,m_dirty=1,m_pattern; static double m_last; static char m_attr[96];
 static int m_sock=-1; static struct sockaddr_un m_sa; static GLuint m_prog; static int m_havepos;
 static const char *m_cache(void){ const char*c=getenv("GLHOST_MAPCACHE"); return c?c:P("mapcache"); }
@@ -58,8 +62,24 @@ static void map_draw_surface(msurf_t *m){
   glBegin(GL_TRIANGLE_FAN); glColor4f(.05f,.35f,.85f,1); glVertex2f(0,2*k); glVertex2f(0,-17*k); glVertex2f(11*k,13*k); glVertex2f(0,6*k); glVertex2f(-11*k,13*k); glVertex2f(0,-17*k); glEnd(); glPopMatrix();
   if(m_attr[0]&&m==&m_lay){ int tw=0; for(const char*p=m_attr;*p;p++) tw+=glutBitmapWidth(GLUT_BITMAP_HELVETICA_10,*p); glColor4f(1,1,1,.7f); glRectf(w-tw-8,h-15,w,h); glColor4f(.1f,.1f,.1f,1); map_text(w-tw-4,h-4,m_attr,GLUT_BITMAP_HELVETICA_10); }
   glDisable(GL_BLEND); }
-static void map_ctx_begin(void){ mainctx=CGLGetCurrentContext(); if(!mapctx){ CGLError e=CGLCreateContext(CGLGetPixelFormat(mainctx),mainctx,&mapctx); if(e){ fprintf(stderr,"[map] CGLCreateContext: %d\n",e); mapctx=0; return; } } glFlush(); CGLSetCurrentContext(mapctx); }
-static void map_ctx_end(void){ glFlush(); CGLSetCurrentContext(mainctx); }
+static void map_ctx_begin(void){
+#ifdef __APPLE__
+ mainctx=CGLGetCurrentContext(); if(!mapctx){ CGLError e=CGLCreateContext(CGLGetPixelFormat(mainctx),mainctx,&mapctx); if(e){ fprintf(stderr,"[map] CGLCreateContext: %d\n",e); mapctx=0; return; } } glFlush(); CGLSetCurrentContext(mapctx);
+#else
+ if(!mapctx){ mainctx=glXGetCurrentContext(); mdpy=glXGetCurrentDisplay(); mdraw=glXGetCurrentDrawable(); if(!mainctx) return;
+   XWindowAttributes wa; if(!XGetWindowAttributes(mdpy,(Window)mdraw,&wa)){ fprintf(stderr,"[map] XGetWindowAttributes\n"); return; }
+   mapctx=glXCreateNewContext(mdpy,wa.visual->visualid,GLX_RGBA_TYPE,mainctx,True);   /* mesmo visual da janela do GLUT: desenha só em FBOs compartilhados */
+   if(!mapctx){ fprintf(stderr,"[map] glXCreateNewContext\n"); return; } }
+ glFlush(); if(!glXMakeCurrent(mdpy,mdraw,mapctx)) fprintf(stderr,"[map] glXMakeCurrent(map) falhou\n");
+#endif
+}
+static void map_ctx_end(void){ glFlush();
+#ifdef __APPLE__
+ CGLSetCurrentContext(mainctx);
+#else
+ glXMakeCurrent(mdpy,mdraw,mainctx);
+#endif
+}
 static void map_layer_draw(void){ if(!m_lw||!m_lh) return; if(!m_lay.tex||m_lay.w!=m_lw||m_lay.h!=m_lh){ if(!m_lay.tex) glGenTextures(1,&m_lay.tex); glBindTexture(GL_TEXTURE_2D,m_lay.tex); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR); glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,m_lw,m_lh,0,GL_RGBA,GL_UNSIGNED_BYTE,0); if(m_lay.fbo){ glDeleteFramebuffersEXT(1,&m_lay.fbo); m_lay.fbo=0; } m_lay.w=m_lw; m_lay.h=m_lh; } map_draw_surface(&m_lay); }
 /* imagem final = mapa por baixo, HMI por cima usando o alfa que o HMI deixou na tela (o recorte do layer_mask) */
 static void map_compose(void){ map_ctx_begin(); if(!mapctx) return;

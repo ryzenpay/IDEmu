@@ -1,8 +1,14 @@
 #include <time.h>
 #define GL_SILENCE_DEPRECATION 1
+#ifdef __APPLE__
 #include <GLUT/glut.h>
 #include <OpenGL/gl.h>
 #include <OpenGL/glext.h>
+#else
+#include <GL/glew.h>            /* os símbolos *EXT vivem só no OpenGL.framework do macOS: no Linux entram pela GLEW */
+#include <GL/glxew.h>           /* a parte GLX (troca de contexto, swap interval) vem por extenso no glxew da GLEW */
+#include <GL/freeglut.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +19,9 @@
 #include <sys/stat.h>
 #include <strings.h>
 #include "glops.h"
+#ifdef __APPLE__
 #include <OpenGL/OpenGL.h>
+#endif
 typedef unsigned int u32;
 static const char *SOCK="/tmp/glbridge.sock";
 static const char *CTL="/tmp"; static char pbuf_[8][512]; static int pidx_;
@@ -233,8 +241,15 @@ int main(int argc,char**argv){
   glutInitDisplayMode(GLUT_RGBA|GLUT_DOUBLE|GLUT_DEPTH|GLUT_STENCIL); glutInitWindowSize(winw,winh);
   glutCreateWindow("BMW iDrive 6 (QEMU OMAP5)"); glutDisplayFunc(display); glutReshapeFunc(reshape); glutIdleFunc(idle); glutMouseFunc(on_mouse); glutMotionFunc(on_motion); glutKeyboardFunc(on_key); glutKeyboardUpFunc(on_keyup); glutSpecialFunc(on_special); glutSpecialUpFunc(on_specialup); glutIgnoreKeyRepeat(1);
   fprintf(stderr,"[host] GL_VERSION=%s RENDERER=%s\n",glGetString(GL_VERSION),glGetString(GL_RENDERER));
+#ifndef __APPLE__
+  if(!nogl&&glewInit()!=GLEW_OK){ fprintf(stderr,"[host] glewInit falhou\n"); return 4; }   /* contexto criado pelo GLUT: os ponteiros EXT ficam válidos a partir daqui */
+#endif
   load_index(); ensure_screen(1440,540); window_shown=getenv("GLHOST_SHOW")!=NULL; if(!window_shown) glutHideWindow();
+#ifdef __APPLE__
   { GLint si=0; CGLSetParameter(CGLGetCurrentContext(),kCGLCPSwapInterval,&si); }
+#else
+  { if(GLXEW_MESA_swap_control) glXSwapIntervalMESA(0); else if(GLXEW_EXT_swap_control) glXSwapIntervalEXT(glXGetCurrentDisplay(),glXGetCurrentDrawable(),0); }   /* sem vsync: os quadros vão para o frame.rgb, a janela é decorativa */
+#endif
   if(getenv("GLHOST_LOG_MB")) glog_max=atoll(getenv("GLHOST_LOG_MB"))<<20;
   if(getenv("GLHOST_REPLAY")&&replay_file(getenv("GLHOST_REPLAY"))) return 3;
   if(getenv("GLHOST_RECORD")){ recf=fopen(getenv("GLHOST_RECORD"),"wb"); if(recf){ static char rb[1<<20]; setvbuf(recf,rb,_IOFBF,sizeof rb); } }

@@ -1,6 +1,6 @@
 #!/bin/bash
-cd ~/Desktop/IDEmu/tools/mgu
-S=~/Downloads/psdzdata/swe/swfl
+cd "$(dirname "$0")"
+S=${PSDZ_SWFL:-~/Downloads/psdzdata/swe/swfl}
 rm -rf /tmp/mgu/rse && mkdir -p /tmp/mgu/rse/app /tmp/mgu/rse/data /tmp/mgu/rse/rsu
 for id in 566c 566d 566e 566f 5670 5671 5672 5673 5675 5678 567a; do
   f=$(ls $S/swfl_0000$id.bin.* | tail -1); echo "app $id"; python3 har.py $f /tmp/mgu/rse/app | tail -1

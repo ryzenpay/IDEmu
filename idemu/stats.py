@@ -1,10 +1,10 @@
 """Estatísticas avançadas do ambiente em execução (o "gerenciador de tarefas" da VM).
 
 Um amostrador em segundo plano mede, a cada segundo, o QEMU (a VM) e o renderizador (glhost):
-CPU, RAM residente, quadros por segundo e tempo de quadro, GPU do Mac e o espaço em disco do ambiente.
-Só usa `ps`, `ioreg`, `sysctl` e o cabeçalho do quadro compartilhado: nada é injetado na VM.
+CPU, RAM residente, quadros por segundo e tempo de quadro, GPU da máquina e o espaço em disco do ambiente.
+No macOS usa `ps`, `ioreg` e `sysctl`; no Linux, /proc, /sys/class/drm e lspci: nada é injetado na VM.
 """
-import os, re, time, shutil, threading, subprocess, collections
+import os, re, sys, time, shutil, threading, subprocess, collections
 
 INTERVAL = 1.0
 HISTORY = 900            # 15 minutos a 1 amostra/s
@@ -24,9 +24,24 @@ def _cputime(s):
     return t
 
 def ps_info(pids):
-    """{pid: (cpu_seconds, rss_kb, vsz_kb)} num único `ps`."""
+    """{pid: (cpu_seconds, rss_kb, vsz_kb)}. No Linux, /proc direto: o `time=` do ps do Linux só tem resolução de 1 s."""
     pids = [p for p in pids if p]
     if not pids: return {}
+    if sys.platform != 'darwin':
+        try: hz = os.sysconf('SC_CLK_TCK')
+        except ValueError: hz = 100
+        res = {}
+        for pid in pids:
+            try:
+                with open('/proc/%d/stat' % pid) as f: stat = f.read()
+                tail = stat[stat.rindex(')') + 2:].split()          # o nome do processo pode conter espaços/parênteses
+                ut, st_ = int(tail[11]) / hz, int(tail[12]) / hz
+                with open('/proc/%d/statm' % pid) as f: pages = [int(x) for x in f.read().split()]
+                ps_kb = os.sysconf('SC_PAGESIZE') // 1024
+                res[pid] = (ut + st_, pages[1] * ps_kb, pages[0] * ps_kb)
+            except (OSError, ValueError, IndexError):
+                pass
+        return res
     out = _run(['ps', '-o', 'pid=,time=,rss=,vsz=', '-p', ','.join(str(p) for p in pids)])
     res = {}
     for line in out.splitlines():
@@ -37,7 +52,26 @@ def ps_info(pids):
     return res
 
 def gpu_info():
-    """Uso da GPU do sistema (não por processo: o macOS não expõe isso sem privilégios)."""
+    """Uso da GPU do sistema (não por processo: nem o macOS nem a expõem sem privilégios)."""
+    if sys.platform != 'darwin':
+        d = {}
+        for p in sorted(os.listdir('/sys/class/drm')) if os.path.isdir('/sys/class/drm') else []:     # amdgpu/intel/nouveau: busy_percent do drm
+            f = '/sys/class/drm/%s/device/gpu_busy_percent' % p
+            if not os.path.exists(f): continue
+            try: d['dev'] = int(open(f).read().strip())
+            except (OSError, ValueError): continue
+            for key, n in (('mem', 'mem_info_vram_used'), ('alloc', 'mem_info_vram_total')):
+                g = '/sys/class/drm/%s/device/%s' % (p, n)
+                try: d[key] = int(open(g).read().strip())
+                except (OSError, ValueError): pass
+            break
+        if 'dev' not in d and shutil.which('nvidia-smi'):           # driver proprietário
+            out = _run(['nvidia-smi', '--query-gpu=utilization.gpu,memory.used,memory.total', '--format=csv,noheader,nounits'], timeout=2)
+            f = [x.strip() for x in out.split(',')]
+            if len(f) >= 3:
+                try: d = {'dev': int(f[0]), 'render': int(f[0]), 'mem': int(f[1]) * 1048576, 'alloc': int(f[2]) * 1048576}
+                except ValueError: pass
+        return d
     out = _run(['ioreg', '-r', '-d', '1', '-w0', '-c', 'IOAccelerator'])
     d = {}
     for k, key in (('Device Utilization %', 'dev'), ('Renderer Utilization %', 'render'), ('Tiler Utilization %', 'tiler'),
@@ -47,6 +81,12 @@ def gpu_info():
     return d
 
 def gpu_name():
+    if sys.platform != 'darwin':
+        if shutil.which('lspci'):
+            for line in _run(['lspci']).splitlines():
+                if re.search(r'\b(VGA compatible|3D|Display) controller\b', line):
+                    return line.split(': ', 1)[-1].strip()
+        return None
     out = _run(['ioreg', '-r', '-d', '1', '-w0', '-c', 'IOAccelerator'])
     m = re.search(r'"model" = "([^"]+)"', out)
     return m.group(1) if m else None
@@ -73,7 +113,7 @@ class Sampler:
         self.frames = collections.deque(maxlen=2000)         # instantes (s) em que o renderizador entregou um quadro
         self.lock = threading.Lock()
         self.run_key = None; self.last = None
-        self.static = {'host_ram_mb': self._sysctl('hw.memsize') // (1 << 20), 'cores': os.cpu_count() or 1, 'gpu': None, 'guest_ram_mb': 2048}
+        self.static = {'host_ram_mb': self._host_ram_mb(), 'cores': os.cpu_count() or 1, 'gpu': None, 'guest_ram_mb': 2048}
         self.storage = {}; self.storage_t = {}
         self._stop = threading.Event(); self.seen = 0.0          # última consulta de /api/stats: sem ninguém olhando, a amostragem para
         threading.Thread(target=self._fast, daemon=True).start()
@@ -84,6 +124,16 @@ class Sampler:
     def _sysctl(k):
         try: return int(_run(['sysctl', '-n', k]).strip() or 0)
         except ValueError: return 0
+
+    @staticmethod
+    def _host_ram_mb():
+        if sys.platform != 'darwin':
+            try:
+                for line in open('/proc/meminfo'):
+                    if line.startswith('MemTotal:'): return int(line.split()[1]) // 1024
+            except OSError: pass
+            return 0
+        return Sampler._sysctl('hw.memsize') // (1 << 20)
 
     def stop(self): self._stop.set()
 

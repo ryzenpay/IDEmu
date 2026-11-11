@@ -30,7 +30,7 @@ function waitUp(p, tries = 120) {
 }
 
 function startServer(p) {
-  const py = process.env.IDEMU_PYTHON || '/usr/bin/python3';
+  const py = process.env.IDEMU_PYTHON || (process.platform === 'darwin' ? '/usr/bin/python3' : 'python3');
   server = spawn(py, ['-m', 'idemu', 'gui', '--no-browser', '--port', String(p)], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
   let log = '';
   const keep = (d) => { log = (log + d.toString()).slice(-4000); };
@@ -76,7 +76,8 @@ if (!app.requestSingleInstanceLock()) { app.quit(); } else {
   app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
   app.whenReady().then(async () => {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
-      { role: 'appMenu' }, { role: 'editMenu' },
+      process.platform === 'darwin' ? { role: 'appMenu' } : { role: 'fileMenu' },   // no Linux/Windows o appMenu (Serviços, Esconder) não tem alvo
+      { role: 'editMenu' },
       { label: 'Visualizar', submenu: [{ role: 'reload' }, { role: 'forceReload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }, { role: 'toggleDevTools' }] },
       { role: 'windowMenu' },
     ]));

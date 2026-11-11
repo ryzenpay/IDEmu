@@ -132,9 +132,10 @@ QEMU_OWN = os.path.join(ROOT, 'bin', 'qemu-system-x86_64')       # QEMU 11.1.2 d
 QEMU_SHARE = os.path.join(ROOT, 'bin', 'qemu-share')              # firmware (BIOS, VGA) que o QEMU próprio procura
 SHM_BYTES = 128 << 20                                              # SHM_SIZE de src/mgu/proto.h
 def find_qemu():
-    for p in (os.environ.get('IDEMU_QEMU_X86'), QEMU_OWN, shutil.which('qemu-system-x86_64'), '/opt/homebrew/bin/qemu-system-x86_64', '/usr/local/bin/qemu-system-x86_64'):
+    for p in (os.environ.get('IDEMU_QEMU_X86'), QEMU_OWN, shutil.which('qemu-system-x86_64'), '/opt/homebrew/bin/qemu-system-x86_64', '/usr/local/bin/qemu-system-x86_64', '/usr/bin/qemu-system-x86_64'):
         if p and os.path.exists(p): return p
-    raise RuntimeError('qemu-system-x86_64 não encontrado: instale com "brew install qemu"')
+    raise RuntimeError('qemu-system-x86_64 não encontrado: instale com "brew install qemu"' if sys.platform == 'darwin'
+                       else 'qemu-system-x86_64 não encontrado: rode tools/qemu/build.sh (mais rápido, com o idemu-shm) ou instale com "apt install qemu-system-x86"')
 def has_shm(qemu):
     """O QEMU do IDEmu (bin/qemu-system-x86_64) tem o dispositivo idemu-shm: o canal gráfico vai por memória compartilhada (≈ 100x mais rápido que a serial)."""
     return os.path.realpath(qemu) == os.path.realpath(QEMU_OWN) and os.path.isdir(QEMU_SHARE) and not os.environ.get('IDEMU_NO_SHM')
@@ -149,10 +150,11 @@ def qemu_img():
         if p and os.path.exists(p): return p
 
 def clone_file(src, dst):
-    """Cópia instantânea no APFS (clonefile); cópia comum nos demais sistemas de arquivos."""
+    """Cópia instantânea onde o sistema de arquivos sabe clonar (clonefile no APFS, reflink em XFS/btrfs); cópia comum nos demais."""
     try: os.unlink(dst)
     except OSError: pass
-    if subprocess.run(['cp', '-c', src, dst], capture_output=True).returncode: shutil.copyfile(src, dst)
+    flag = '-c' if sys.platform == 'darwin' else '--reflink=auto'
+    if subprocess.run(['cp', flag, src, dst], capture_output=True).returncode: shutil.copyfile(src, dst)
 
 class Mgu7Runtime(runtime.Runtime):
     kind = 'mgu7'; disp = (1920, 1080)

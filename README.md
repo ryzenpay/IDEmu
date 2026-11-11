@@ -21,13 +21,14 @@ system: the firmware packages do not carry map data and the navigation engine do
 
 ## What you need
 
-* A Mac with Apple Silicon (iDrive 8 uses the Hypervisor framework) and macOS 14 or later. Python 3 (the system one is enough).
+* A Mac with Apple Silicon (iDrive 8 uses the Hypervisor framework) and macOS 14 or later — **or Linux x86-64** (developed and tested on WSL2/Ubuntu 22.04, see [Running on Linux](#running-on-linux)). Python 3 (the system one is enough).
 * Your **own firmware packages** (PSdZData / SWFL files). The assistant tells you which exact files each iDrive version needs and can scan a folder
   for them. Nothing is modified; images are built in the project folder.
 * A QEMU build: the project uses custom QEMU 11.1.2 builds (OMAP5, SH7785 and `idemu-shm` devices). Source and recipe: [src/qemu](src/qemu) and
-  [tools/qemu/build.sh](tools/qemu/build.sh). Homebrew `qemu` provides `qemu-img` (needed for the iDrive 7 snapshot) and `qemu-system-aarch64` (iDrive 8).
-* Renderer helpers (`glhost`, `glhost7`, `mguhost`) are built from [src](src) with clang. iDrive 8 also needs ANGLE (`libEGL.dylib` and `libGLESv2.dylib`),
-  found in any installed Chromium-based app, or set `IDEMU_ANGLE`.
+  [tools/qemu/build.sh](tools/qemu/build.sh). Homebrew `qemu` provides `qemu-img` (needed for the iDrive 7 snapshot) and `qemu-system-aarch64` (iDrive 8);
+  `tools/qemu/build.sh` also builds `qemu-system-aarch64` into `bin/`, so on Linux only `qemu-img` (package `qemu-utils`) comes from the distro.
+* Renderer helpers (`glhost`, `glhost7`, `mguhost`) are built from [src](src) with clang. iDrive 8 also needs ANGLE (`libEGL.dylib` and `libGLESv2.dylib`
+  on macOS, `libEGL.so` and `libGLESv2.so` on Linux), found in any installed Chromium-based app, or set `IDEMU_ANGLE`.
 
 ## Quick start
 
@@ -38,6 +39,24 @@ python3 -m idemu gui   # the same, web interface at http://127.0.0.1:8765
 
 New environment → iDrive version → car model → required files → parameters → create → build (~20 s for iDrive 5/6) → start. Command line:
 `python3 -m idemu list | build <id> | run <id>`.
+
+## Running on Linux
+
+Everything except the iDrive 8 hypervisor works the same as on macOS (iDrive 8 runs under TCG on x86-64; KVM is only used on ARM hosts).
+
+```bash
+sudo apt install build-essential pkg-config ninja-build libglib2.0-dev libpixman-1-dev libfdt-dev flex bison \
+  clang lld freeglut3-dev libgl1-mesa-dev libglew-dev libegl1-mesa-dev qemu-utils openssh-server zenity
+pip3 install --user meson               # QEMU needs meson >= 0.63 (Ubuntu 22.04 ships 0.61)
+
+tools/qemu/build.sh ~/qemu-11.1.2.tar.xz          # bin/qemu-system-x86_64, -arm and -aarch64
+src/cic/build.sh    ~/qemu-11.1.2.tar.xz          # bin/qemu-system-sh4 (same tarball, shared tree)
+src/glhost/build.sh                                # bin/glhost   (renderer for iDrive 5/6)
+src/mgu/build.sh    <libc-2.27.so do MGU>          # iDrive 7 guest bits + bin/glhost7
+```
+
+The tarball comes from <https://download.qemu.org>; the scripts build only the pieces IDEmu needs. On WSL, file pickers use zenity/kdialog and
+`xdg-open`/`wslview` hand folders and URLs to the Windows desktop; the GPU tile in Statistics stays empty until `/dev/dri` or `nvidia-smi` is reachable.
 
 ## Highlights
 

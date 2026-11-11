@@ -1,4 +1,5 @@
-/* pngload.c: decodifica um PNG/JPEG do cache de mapas para RGBA (ImageIO). Separado de host.c por causa dos cabeçalhos da Apple. */
+/* pngload.c: decodifica um PNG/JPEG do cache de mapas para RGBA (no macOS, ImageIO; no Linux, stb_image). Separado de host.c por causa dos cabeçalhos da Apple. */
+#ifdef __APPLE__
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,3 +14,9 @@ unsigned char *pngload(const char *path,int *w,int *h){
   CGContextRef c=px?CGBitmapContextCreate(px,W,H,8,(size_t)W*4,cs,kCGImageAlphaPremultipliedLast):0;
   if(c){ CGContextDrawImage(c,CGRectMake(0,0,W,H),img); CGContextRelease(c); } else { free(px); px=0; }
   CGColorSpaceRelease(cs); CGImageRelease(img); *w=W; *h=H; return px; }
+#else
+#include <stdlib.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+unsigned char *pngload(const char *path,int *w,int *h){ int n; unsigned char *px=stbi_load(path,w,h,&n,4); if(!px){ *w=*h=0; } return px; }
+#endif

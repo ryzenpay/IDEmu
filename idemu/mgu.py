@@ -1,5 +1,5 @@
 """iDrive 8 (MGU22): monta a imagem a partir da PSdZData e roda QEMU `virt` + mguhost. Detalhes em docs/OUTRAS_GERACOES.md."""
-import _posixshmem, glob, json, mmap, os, shutil, struct, subprocess, sys, threading, time
+import _posixshmem, glob, json, mmap, os, platform, shutil, struct, subprocess, sys, threading, time
 from . import runtime, coding8
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,17 +27,39 @@ def build(psdz=None, log=print, progress=lambda p, s: None):
             if line.startswith(key): progress(pct, step)
     if p.wait() != 0: raise RuntimeError('falha ao montar a imagem do iDrive 8: ' + ' / '.join(tail)[-300:])
 
+def _angle_here(d):
+    return any(os.path.exists(d + '/libEGL.' + a) and os.path.exists(d + '/libGLESv2.' + b) for a, b in (('dylib', 'dylib'), ('so', 'so'), ('so.1', 'so.2')))
+
 def find_angle():
     env = os.environ.get('IDEMU_ANGLE')
     if env: return env
-    pats = ['/Applications/*/Contents/Frameworks/Chromium Embedded Framework.framework/Versions/A/Libraries',
-            '/Applications/*/Contents/Frameworks/*Framework.framework/Versions/*/Libraries', '/Applications/*/Contents/Frameworks']
-    for pat in pats:
-        for d in sorted(glob.glob(pat)):
-            if os.path.exists(d + '/libGLESv2.dylib') and os.path.exists(d + '/libEGL.dylib'):
-                arch = subprocess.run(['lipo', '-archs', d + '/libGLESv2.dylib'], capture_output=True, text=True).stdout
-                if 'arm64' in arch: return d
-    raise RuntimeError('ANGLE não encontrado: instale um app baseado em Chromium ou defina IDEMU_ANGLE com a pasta de libEGL.dylib e libGLESv2.dylib')
+    if sys.platform == 'darwin':
+        pats = ['/Applications/*/Contents/Frameworks/Chromium Embedded Framework.framework/Versions/A/Libraries',
+                '/Applications/*/Contents/Frameworks/*Framework.framework/Versions/*/Libraries', '/Applications/*/Contents/Frameworks']
+        for pat in pats:
+            for d in sorted(glob.glob(pat)):
+                if os.path.exists(d + '/libGLESv2.dylib') and os.path.exists(d + '/libEGL.dylib'):
+                    arch = subprocess.run(['lipo', '-archs', d + '/libGLESv2.dylib'], capture_output=True, text=True).stdout
+                    if 'arm64' in arch: return d
+        raise RuntimeError('ANGLE não encontrado: instale um app baseado em Chromium ou defina IDEMU_ANGLE com a pasta de libEGL.dylib e libGLESv2.dylib')
+    # Linux: o ANGLE embutido no Chrome/Edge/Chromium (libEGL.so + libGLESv2.so) ou, por último, a Mesa do sistema (a sufixada)
+    for d in ('/opt/google/chrome', '/opt/google/chrome/lib', '/opt/microsoft/msedge', '/opt/brave.com/brave',
+              '/usr/lib/chromium', '/usr/lib/chromium-browser', '/snap/chromium/current/usr/lib/chromium-browser',
+              '/var/lib/flatpak/extension/org.chromium.Platform/*/active/x86_64', '/usr/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu'):
+        for cand in sorted(glob.glob(d)):
+            if _angle_here(cand): return cand
+    raise RuntimeError('ANGLE não encontrado: instale um app baseado em Chromium ou defina IDEMU_ANGLE com a pasta de libEGL.so e libGLESv2.so')
+
+def find_qemu_aarch64():
+    for p in (os.environ.get('IDEMU_QEMU_AARCH64'), os.path.join(ROOT, 'bin', 'qemu-system-aarch64'), shutil.which('qemu-system-aarch64'), '/usr/bin/qemu-system-aarch64'):
+        if p and os.path.exists(p): return p
+    raise RuntimeError('qemu-system-aarch64 não encontrado: rode tools/qemu/build.sh ou instale o pacote qemu-system-arm')
+
+def accel_args():
+    """Aceleração do QEMU `virt`: HVF no Mac; KVM para guest ARM só existe num host ARM; no resto (x86-64), TCG com threads."""
+    if sys.platform == 'darwin': return ['-accel', 'hvf', '-cpu', 'host']
+    if platform.machine() == 'aarch64' and os.access('/dev/kvm', os.R_OK | os.W_OK): return ['-accel', 'kvm', '-cpu', 'host']
+    return ['-accel', 'tcg,thread=multi', '-cpu', 'max']
 
 def _cpio(items):
     out = bytearray()
@@ -124,9 +146,10 @@ class MguRuntime(runtime.Runtime):
             os.mkfifo(self.console_in); self._keep = os.open(self.console_in, os.O_RDWR)
             ser = os.path.join(self.logd, 'console.log'); sl = open(ser, 'wb')
             args = 'console=ttyAMA0 loglevel=3 rdinit=/idemu.sh rootfstype=ramfs selinux=0 enforcing=0 panic=0 log_buf_len=2M' + (' idemu.debug' if self.debug else '') + (' idemu.dlt' if os.environ.get('IDEMU_MGU_DLT') else '') + (' idemu.usb' if os.environ.get('IDEMU_MGU_USB') else '') + ' idemu.time=%d' % time.time()
-            cmd = ['qemu-system-aarch64', '-M', 'virt,gic-version=3,memory-backend=m0', '-accel', 'hvf', '-cpu', 'host', '-m', str(MB), '-smp', '4', '-nographic', '-serial', 'mon:stdio',
+            cmd = [find_qemu_aarch64(), '-M', 'virt,gic-version=3,memory-backend=m0'] + accel_args() + ['-m', str(MB), '-smp', '4', '-nographic', '-serial', 'mon:stdio',
                    '-object', f'memory-backend-shm,id=m0,size={MB}M', '-dtb', dtb, '-kernel', OUT + '/Image', '-append', args]
-            env = dict(os.environ, DYLD_INSERT_LIBRARIES=OUT + '/guest/qemushm.dylib', IDEMU_SHM_NAME=SHM)
+            inject, shm_lib = ('DYLD_INSERT_LIBRARIES', 'qemushm.dylib') if sys.platform == 'darwin' else ('LD_PRELOAD', 'qemushm.so')
+            env = dict(os.environ, **{inject: OUT + '/guest/' + shm_lib, 'IDEMU_SHM_NAME': SHM})
             self._spawn('q', cmd, stdin=self._keep, stdout=sl, stderr=subprocess.STDOUT, env=env)
             # shell do guest (ttyAMA0): a entrada é o FIFO que o QEMU lê, a saída é o console.log; o ConsoleMux os expõe em shell.sock e no SSH
             self.mux = runtime.ConsoleMux(os.path.join(self.run, 'shell.sock'), self._con_write); self.mux.start()

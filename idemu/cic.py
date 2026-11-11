@@ -4,7 +4,7 @@ A imagem (IFS de boot com os patches, flash NOR de 128 MB com IFS2 e EFS_RO) é 
 swfl_000003a6 (e do 417) e é compartilhada entre os ambientes. O QEMU (placa `cic`, bin/qemu-system-sh4) grava a tela composta em
 frame.rgb (CIC_FRAME) e recebe rotor/teclas por um socket (CIC_INPUT). Detalhes em docs/CIC.md.
 """
-import collections, glob, hashlib, importlib.util, json, os, shutil, socket, subprocess, threading, time
+import collections, glob, hashlib, importlib.util, json, os, shutil, socket, subprocess, sys, threading, time
 from . import runtime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -184,10 +184,11 @@ class CicRuntime(runtime.Runtime):
         hmiinput.patch_flash_file(os.path.join(OUT, 'flash.img'))      # entrada do controlador (imagens montadas antes dela)
         if self.zbe: self.zbe.close(); self.zbe = None
         shutil.rmtree(self.run, ignore_errors=True); os.makedirs(self.run); os.makedirs(self.logd, exist_ok=True)
-        # flash gravável desta execução (clone APFS, instantâneo): o snapshot=on gravava num qcow2 temporário e às vezes travava o QEMU
+        # flash gravável desta execução (clone instantâneo onde o sistema de arquivos sabe clonar): o snapshot=on gravava num qcow2 temporário e às vezes travava o QEMU
         # numa gravação da flash (vCPU parado em blk_pwrite)
         fl = os.path.join(self.run, 'flash.img')
-        if subprocess.call(['cp', '-c', os.path.join(OUT, 'flash.img'), fl], stderr=subprocess.DEVNULL) != 0:
+        flag = '-c' if sys.platform == 'darwin' else '--reflink=auto'
+        if subprocess.call(['cp', flag, os.path.join(OUT, 'flash.img'), fl], stderr=subprocess.DEVNULL) != 0:
             shutil.copyfile(os.path.join(OUT, 'flash.img'), fl)
         try:
             n = apply_userfiles(fl, self.env_dir, log=lambda m: self.con.append('[idemu] ' + m))
