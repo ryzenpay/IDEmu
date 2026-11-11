@@ -67,9 +67,13 @@ static void map_ctx_begin(void){
  mainctx=CGLGetCurrentContext(); if(!mapctx){ CGLError e=CGLCreateContext(CGLGetPixelFormat(mainctx),mainctx,&mapctx); if(e){ fprintf(stderr,"[map] CGLCreateContext: %d\n",e); mapctx=0; return; } } glFlush(); CGLSetCurrentContext(mapctx);
 #else
  if(!mapctx){ mainctx=glXGetCurrentContext(); mdpy=glXGetCurrentDisplay(); mdraw=glXGetCurrentDrawable(); if(!mainctx) return;
-   XWindowAttributes wa; if(!XGetWindowAttributes(mdpy,(Window)mdraw,&wa)){ fprintf(stderr,"[map] XGetWindowAttributes\n"); return; }
-   mapctx=glXCreateNewContext(mdpy,wa.visual->visualid,GLX_RGBA_TYPE,mainctx,True);   /* mesmo visual da janela do GLUT: desenha só em FBOs compartilhados */
-   if(!mapctx){ fprintf(stderr,"[map] glXCreateNewContext\n"); return; } }
+   int fbcid=0,n=0;                                                     /* o próprio FBConfig da janela do GLUT: compartilhar contexto exige visual compatível (driver GLX nenhum aceita o VisualID conversor) */
+   if(glXQueryContext(mdpy,mainctx,GLX_FBCONFIG_ID,&fbcid)!=Success) fbcid=0;
+   GLXFBConfig cfg=NULL;
+   if(fbcid){ int at[]={GLX_FBCONFIG_ID,fbcid,0}; GLXFBConfig *fl=glXChooseFBConfig(mdpy,DefaultScreen(mdpy),at,&n); if(fl){ if(n) cfg=fl[0]; XFree(fl); } }
+   if(!cfg){ int at[]={GLX_RENDER_TYPE,GLX_RGBA_BIT,0}; GLXFBConfig *fl=glXChooseFBConfig(mdpy,DefaultScreen(mdpy),at,&n); if(fl){ if(n) cfg=fl[0]; XFree(fl); } }
+   if(cfg) mapctx=glXCreateNewContext(mdpy,cfg,GLX_RGBA_TYPE,mainctx,True);
+   if(!mapctx){ fprintf(stderr,"[map] sem contexto GLX compartilhado: o mapa fica desenhado pelo guest\n"); return; } }
  glFlush(); if(!glXMakeCurrent(mdpy,mdraw,mapctx)) fprintf(stderr,"[map] glXMakeCurrent(map) falhou\n");
 #endif
 }

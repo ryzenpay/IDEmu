@@ -233,6 +233,9 @@ static int replay_file(const char *path){
   fprintf(stderr,"[host] replay: %u pedidos, %lld MB em %.2f s\n",cnt,total>>20,now_s()-t0); return 0; }
 static void display(void){ panel_dirty=1; }
 static void reshape(int w,int h){ winw=w; winh=h; }
+#ifndef __APPLE__
+static int host_xerr(Display*x,XErrorEvent*ev){ char b[128]; if(XGetErrorText(x,ev->error_code,b,sizeof b)==Success) fprintf(stderr,"[host] X: %s (pedido %d.%d)\n",b,ev->request_code,ev->minor_code); else fprintf(stderr,"[host] X: erro %d\n",ev->error_code); return 0; }
+#endif
 int main(int argc,char**argv){
   glutInit(&argc,argv); verbose=getenv("GLHOST_VERBOSE")!=NULL; nogl=getenv("GLHOST_NOGL")!=NULL;
   const char*sc=getenv("GLHOST_SOCK"); if(sc) SOCK=sc;
@@ -243,6 +246,7 @@ int main(int argc,char**argv){
   glutCreateWindow("BMW iDrive 6 (QEMU OMAP5)"); glutDisplayFunc(display); glutReshapeFunc(reshape); glutIdleFunc(idle); glutMouseFunc(on_mouse); glutMotionFunc(on_motion); glutKeyboardFunc(on_key); glutKeyboardUpFunc(on_keyup); glutSpecialFunc(on_special); glutSpecialUpFunc(on_specialup); glutIgnoreKeyRepeat(1);
   fprintf(stderr,"[host] GL_VERSION=%s RENDERER=%s\n",glGetString(GL_VERSION),glGetString(GL_RENDERER));
 #ifndef __APPLE__
+  XSetErrorHandler(host_xerr);   /* erros assíncronos de GLX/X11 não podem matar o renderizador: o padrão da Xlib é exit() */
   if(!nogl&&glewInit()!=GLEW_OK){ fprintf(stderr,"[host] glewInit falhou\n"); return 4; }   /* contexto criado pelo GLUT: os ponteiros EXT ficam válidos a partir daqui */
 #endif
   load_index(); ensure_screen(1440,540); window_shown=getenv("GLHOST_SHOW")!=NULL; if(!window_shown) glutHideWindow();
