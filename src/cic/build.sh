@@ -149,7 +149,7 @@ open(p, 'w').write(s)
 EOP
 if [ ! -f "$B/build.ninja" ]; then
   if [ "$(uname)" = Darwin ]; then PY=$(command -v python3.12 || command -v python3.11 || command -v python3.10 || command -v python3); else PY=$(command -v python3); fi
-  mkdir -p "$B" && cd "$B" && "$Q/configure" --python="$PY" --target-list=sh-softmmu --disable-docs --disable-guest-agent --disable-tools --disable-gtk --disable-sdl --disable-vnc --disable-curses --disable-rust --disable-user --disable-linux-user --disable-bsd-user --without-default-features --enable-tcg
+  mkdir -p "$B" && cd "$B" && "$Q/configure" --python="$PY" --target-list=sh4-softmmu --disable-docs --disable-guest-agent --disable-tools --disable-gtk --disable-sdl --disable-vnc --disable-curses --disable-rust --disable-user --disable-linux-user --disable-bsd-user --without-default-features --enable-tcg
 fi
 cd "$B" && ninja qemu-system-sh4
 mkdir -p "$H/../../bin"
