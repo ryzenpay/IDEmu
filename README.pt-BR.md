@@ -98,5 +98,8 @@ A tela Mapa do HMI mostra um mapa desenhado pelo IDEmu, que segue o GPS virtual.
 ## Celular
 A aba **Celular** (tela Execução) liga uma página para o celular, na mesma rede Wi-Fi: ele vira a tela, o toque, o rotor e os botões da head unit, e o GPS do carro (posição do celular). Protegido por PIN. Bluetooth, CarPlay e Android Auto não existem na head unit emulada. Ver `docs/CELULAR.md`.
 
+## Extensões
+Solte um ZIP (ou pasta) com um `plugin.json` na pasta `plugins/` e a interface recarrega: a extensão ganha uma aba na tela Execução, fala com a mesma API local e pode trazer um módulo python (que roda dentro do servidor — só instale extensões confiáveis). `docs/PLUGINS.md`.
+
 ## Outras gerações
 iDrive 5 roda com os mesmos pacotes do iDrive 6, ainda com quedas do HMI nos menus de navegação: escolha a geração ao criar o ambiente. Ambientes antigos precisam ser recompilados antes. iDrive 8 roda com a interface real, toque e rotor: escolha **iDrive 8** em Novo ambiente (sem mapa nem sinais do carro). iDrive 7 mostra a tela central (HU) ou a do banco traseiro (RSE), com toque, rotor, botões e editor de codificação, sem mapa, mídia nem sinais do carro. CIC (CIC High, SH-4A) mostra a interface real do HMI no app, ainda sem rotor nem teclas (`docs/CIC.md`). O toque funciona no iDrive 5, 6 e 8. Ver `docs/OUTRAS_GERACOES.md`.

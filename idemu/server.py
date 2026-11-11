@@ -2,7 +2,7 @@
 import os, re, subprocess, json, time, shutil, sys, threading, traceback, mimetypes, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from . import catalog, builder, runtime, codegen, coding, coding7, coding8, stats, mgu, mgu7, phone, cluster, carplay, cic, vin, sysfiles
+from . import catalog, builder, runtime, codegen, coding, coding7, coding8, stats, mgu, mgu7, phone, cluster, carplay, cic, vin, sysfiles, plugins
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENVS = os.path.join(ROOT, 'environments')
@@ -562,8 +562,13 @@ class H(BaseHTTPRequestHandler):
             self._send(500, {'error': '%s: %s' % (type(e).__name__, e)}); traceback.print_exc()
     def static(self, path):
         if path in ('', '/'): path = '/index.html'
-        p = os.path.normpath(os.path.join(WEB, path.lstrip('/')))
-        if not p.startswith(WEB + os.sep) or not os.path.isfile(p): raise ApiError('não encontrado', 404)
+        if path.startswith('/plugins/'):                  # arquivos de extensões: /plugins/<id>/<caminho> (idemu/plugins.py)
+            pid, _, rel = path[len('/plugins/'):].partition('/')
+            p = plugins.file_for(pid, rel)
+            if not p: raise ApiError('não encontrado', 404)
+        else:
+            p = os.path.normpath(os.path.join(WEB, path.lstrip('/')))
+            if not p.startswith(WEB + os.sep) or not os.path.isfile(p): raise ApiError('não encontrado', 404)
         ct = mimetypes.guess_type(p)[0] or 'application/octet-stream'
         self._send(200, open(p, 'rb').read(), ct + ('; charset=utf-8' if ct.startswith('text') or 'javascript' in ct else ''))
     def api(self, m, path, q):
@@ -584,6 +589,10 @@ class H(BaseHTTPRequestHandler):
             if ok: catalog.save_settings({'psdz_path': p})
             return {'ok': ok, 'psdz_ok': ok, 'message': 'PSDZData válido' if ok else 'pasta inválida: precisa conter swe/swfl e mainseries'}
         if path == 'catalog': return dict(catalog.build_catalog(catalog.load_settings().get('psdz_path')), envs_dir=ENVS)
+        if path == 'plugins': return {'plugins': plugins.public(), 'problems': plugins.problems()}
+        if path == 'plugins/rescan' and m == 'POST':
+            plugins.scan(app=APP, log=lambda msg: print('plugin:', msg, flush=True))
+            return {'plugins': plugins.public(), 'problems': plugins.problems()}
         if path == 'fs/list': return fs_list(q.get('path'))
         if path == 'fs/space': return fs_space(q.get('path'))
         if path == 'pick' and m == 'POST':
@@ -846,6 +855,10 @@ def serve(host='127.0.0.1', port=8765, open_browser=True):
     url = 'http://%s:%d/' % (host, port)
     print('IDEmu: interface em', url, flush=True)
     get_stats()
+    try:
+        plugins.scan(app=APP, log=lambda msg: print('plugin:', msg, flush=True))       # extensões da pasta plugins/ (docs/PLUGINS.md)
+    except Exception as e:
+        print('plugins:', e, flush=True)                                                # uma extensão quebrada nunca impede a IDE de abrir
     import signal
     def _bye(*_):          # terminal fechado / kill: não deixa QEMU, renderizador e sshd para trás
         if getattr(APP, '_phone', None): APP._phone.stop()

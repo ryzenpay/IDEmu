@@ -371,13 +371,14 @@
     window.addEventListener('blur', onBlur);
 
     /* ---------- abas ---------- */
-    const TABS = [['can', 'CAN', 'activity'], ['cluster', 'Cluster e HUD', 'gauge'], ['carplay', 'CarPlay', 'disc'], ['gps', 'GPS', 'pin'], ['map', 'Mapa', 'pin'], ['ssh', 'SSH', 'terminal'], ['phone', 'Celular', 'phone'], ['v850', 'V850', 'activity'], ['logs', 'Logs', 'file']];
+    const TABS = [['can', 'CAN', 'activity'], ['cluster', 'Cluster e HUD', 'gauge'], ['carplay', 'CarPlay', 'disc'], ['gps', 'GPS', 'pin'], ['map', 'Mapa', 'pin'], ['ssh', 'SSH', 'terminal'], ['phone', 'Celular', 'phone'], ['v850', 'V850', 'activity'], ['logs', 'Logs', 'file']].concat(IDE.pluginTabs || []);   // abas de extensões (plugins.js) entram no fim
+    const isPluginTab = (t) => (IDE.pluginTabs || []).some((p) => p[0] === t);
     const ctx = { status: () => R.status, running: () => !!(R.status && R.status.state === 'running'), booted: () => !!(R.status && (R.status.state === 'running' || R.status.state === 'booting')) };
     function selectTab(id, persist = true) {
       if (R.activeTab && R.tabs[R.activeTab]) { R.tabs[R.activeTab].api.hide(); R.tabs[R.activeTab].host.hidden = true; }
       R.activeTab = id; if (persist) IDE.pref.set('run.tab', id);      // a troca forçada (CIC/iDrive 7/8 só têm Logs) não apaga a aba preferida
       let t = R.tabs[id];
-      if (!t) { const host = h('div', { class: 'tab-host' }); tabBody.appendChild(host); t = R.tabs[id] = { host, api: IDE.tabDefs[id].mount(host, ctx) }; }
+      if (!t) { const def = IDE.tabDefs[id]; if (!def) { R.activeTab = null; return selectTab('can', false); } const host = h('div', { class: 'tab-host' }); tabBody.appendChild(host); t = R.tabs[id] = { host, api: def.mount(host, ctx) }; }
       t.host.hidden = false; t.api.show(); if (R.status && t.api.onStatus) t.api.onStatus(R.status);
       tabBar.querySelectorAll('button').forEach((b) => { const on = b.dataset.tab === id; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); if (on) b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
     }
@@ -386,7 +387,11 @@
       if (tabBar.scrollWidth <= tabBar.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
       e.preventDefault(); tabBar.scrollBy({ left: e.deltaY, behavior: 'auto' });
     }, { passive: false });
-    TABS.forEach(([id, label, icon]) => tabBar.appendChild(h('button', { class: 'tab', role: 'tab', type: 'button', 'data-tab': id, onclick: () => selectTab(id) }, ic(icon, 16), label)));
+    const addTabBtn = ([id, label, icon]) => tabBar.appendChild(h('button', { class: 'tab', role: 'tab', type: 'button', 'data-tab': id, onclick: () => selectTab(id) }, ic(icon, 16), label));
+    TABS.forEach(addTabBtn);
+    const offPluginTab = IDE.on('plugins:tab', (t) => {          // extensão registrada com a tela já aberta: botão na hora
+      if (!R.dead && !tabBar.querySelector('[data-tab="' + t[0] + '"]')) addTabBtn(t);
+    });
     selectTab(IDE.pref.get('run.tab', 'can') in IDE.tabDefs ? IDE.pref.get('run.tab', 'can') : 'can');
 
     /* ---------- parar ---------- */
@@ -423,7 +428,7 @@
       if (s.kind === 'cic' && img.width) dispSize.textContent = IDE.t('{w} × {h} · sem tela de toque (use o controlador)', { w: img.width, h: img.height });      // o iDrive 7 tem o editor de codificação
       bootNote.textContent = IDE.t(s.kind === 'cic' ? 'O boot do CIC leva cerca de 1 minuto (emulação SH-4 sem aceleração).' : s.kind === 'mgu7' ? 'O primeiro boot do iDrive 7 leva cerca de 2 minutos (emulação x86 sem aceleração); os seguintes, cerca de 1 segundo.' : mgu ? 'O boot do iDrive 8 leva cerca de 1 minuto.' : 'O primeiro boot leva cerca de 45 segundos; os seguintes, cerca de 1 segundo.') + ' ';
       const carplayOk = !mgu && !!s.env && (s.state === 'running' || s.state === 'booting');      // CarPlay: só iDrive 5/6 (NBT Evo) em execução
-      const shown = (t) => t === 'carplay' ? carplayOk : !mgu || t === 'logs' || t === 'phone' || (t === 'ssh' && (s.kind === 'cic' || s.kind === 'mgu7' || s.kind === 'mgu22')) || (t === 'gps' && s.kind === 'cic') || t === 'cluster' || t === 'can';      // SSH: o CIC (ksh do QNX) e o iDrive 7 (shell do guest) têm console; GPS: o CIC tem um receptor ANTARIS virtual
+      const shown = (t) => isPluginTab(t) ? true : t === 'carplay' ? carplayOk : !mgu || t === 'logs' || t === 'phone' || (t === 'ssh' && (s.kind === 'cic' || s.kind === 'mgu7' || s.kind === 'mgu22')) || (t === 'gps' && s.kind === 'cic') || t === 'cluster' || t === 'can';      // SSH: o CIC (ksh do QNX) e o iDrive 7 (shell do guest) têm console; GPS: o CIC tem um receptor ANTARIS virtual; aba de extensão aparece sempre (o plugin se vira com ctx.running)
       tabBar.querySelectorAll('button').forEach((b) => { b.style.display = shown(b.dataset.tab) ? '' : 'none'; });
       const want = IDE.pref.get('run.tab', 'can');      // a aba preferida volta quando reaparece (ex.: CarPlay durante o reinício da head unit)
       if (!shown(R.activeTab)) selectTab(mgu ? 'logs' : 'can', false);
@@ -537,7 +542,7 @@
 
     return {
       unmount() {
-        R.dead = true; stopLoop(); offState();
+        R.dead = true; stopLoop(); offState(); offPluginTab();
         document.removeEventListener('keydown', onKeyDown); document.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur); window.removeEventListener('keydown', padKeys); window.removeEventListener('keyup', padKeys);
         TABS.forEach(([id]) => { const t = R.tabs[id]; if (t) { try { t.api.hide(); t.api.destroy && t.api.destroy(); } catch (e) { console.error(e); } } });
         onBlur();

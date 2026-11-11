@@ -72,6 +72,7 @@ The tarball comes from <https://download.qemu.org>; the scripts build only the p
 * **Fast boot**: the booted state is saved and restored in about a second (iDrive 5, 6 and 7).
 * **Tools**: SSH into the head unit, phone link over Wi-Fi, V850 firmware viewer, live statistics (CPU, RAM, GPU, FPS).
 * **CarPlay** (iDrive 5/6): a fake iPhone brings up the HMI's real CarPlay screens, with a video placeholder and a key code list (CarPlay tab, `docs/CARPLAY.md`).
+* **Host plugins**: drop a zip (or folder) into `plugins/` and it appears in the web UI — new tabs on the Run screen, talking to the same local API; optional python hook (`docs/PLUGINS.md`).
 
 ## Other NBT Evo HMI builds
 
@@ -89,6 +90,7 @@ need a rebuild.
 | `idemu/` | Python package: build, runtime, web server and interface (`idemu/web`) |
 | `src/` | C sources: QEMU patches and boards, GL renderers, guest shims, V850 emulation |
 | `tools/` | Image builders, analysers and test helpers (`tools/mgu`, `tools/cic`, `tools/qemu`) |
+| `plugins/` | Drop folder for host extensions (zip or folder) — see [docs/PLUGINS.md](docs/PLUGINS.md) |
 | `electron/` | Desktop wrapper |
 | `docs/` | Technical notes: [architecture](docs/ARQUITETURA.md), [API](docs/API.md), [other generations](docs/OUTRAS_GERACOES.md), [CIC](docs/CIC.md), [touch](docs/TOQUE.md), [touch controller](docs/TOUCH_CONTROLLER.md) (English), [V850](docs/V850.md), [cluster and HUD](docs/CLUSTER_HUD.md) (in Portuguese) |
 | `tests/` | `python3 -m unittest discover -s tests` |
