@@ -68,6 +68,60 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(m[1]['name'], 'CNewCCMessage')
 
 
+class NavFeedTest(unittest.TestCase):
+    """Orientação externa para o cluster (POST /api/cluster/nav): publicação, expiração e o lugar no instantâneo."""
+
+    def test_set_snapshot_clear(self):
+        f = cluster.NavFeed()
+        self.assertIsNone(f.snapshot())
+        s = f.set(provider='carplay', maneuver='left', street='Rua Augusta', dist_m=240, remaining_m=3200, eta_min=5, destination='Casa')
+        self.assertEqual(s['provider'], 'carplay'); self.assertEqual(s['maneuver'], 'left'); self.assertEqual(s['street'], 'Rua Augusta')
+        self.assertEqual((s['dist_m'], s['remaining_m'], s['eta_min']), (240, 3200, 5))
+        self.assertEqual(f.snapshot()['destination'], 'Casa')
+        f.clear(); self.assertIsNone(f.snapshot())
+
+    def test_rejects_unknown_maneuver(self):
+        with self.assertRaises(ValueError): cluster.NavFeed().set(maneuver='helicopter')
+
+    def test_expires_without_updates(self):
+        f = cluster.NavFeed()
+        f.set(maneuver='right')
+        self.assertIsNotNone(f.snapshot(now=time.time() + cluster.NavFeed.TTL_S - 1))
+        self.assertIsNone(f.snapshot(now=time.time() + cluster.NavFeed.TTL_S + 1))
+        self.assertIsNone(f.snapshot())        # expirada: sai do feed, não volta
+
+    def test_snapshot_carries_nav(self):
+        f = cluster.NavFeed()
+        d = cluster.snapshot(FakeCan(vehicle_speed=40.0), None, None, nav=f)
+        self.assertIsNone(d['nav'])
+        f.set(provider='carplay', maneuver='arrive', destination='Casa')
+        d = cluster.snapshot(FakeCan(vehicle_speed=0.0), None, None, nav=f)
+        self.assertEqual(d['nav']['maneuver'], 'arrive')
+        self.assertEqual(cluster.snapshot(FakeCan(), None, None)['nav'], None)
+
+    def test_route_points_read(self):
+        g = gps.GpsSim(); self.assertIsNone(g.route_points())
+        g.load_route('t', points=[(-23.5, -46.6), (-23.5, -46.59), (-23.509, -46.59)], speed_kmh=40)
+        r = g.route_points()
+        self.assertEqual(r['name'], 't'); self.assertEqual(len(r['points']), 3); self.assertGreater(r['length_m'], 1000)
+
+
+class ClusterInfoTest(unittest.TestCase):
+    def test_defaults(self):
+        self.assertEqual(cluster.cluster_info({}), {'cluster': 'mid', 'hud': True, 'units': 'metric'})
+        self.assertEqual(cluster.cluster_info(None)['cluster'], 'mid')
+
+    def test_car_coding_wins(self):
+        env = {'coding': {'cluster': 'analog', 'hud': False, 'units': 'imperial'}}
+        self.assertEqual(cluster.cluster_info(env), {'cluster': 'analog', 'hud': False, 'units': 'imperial'})
+
+    def test_snapshot_carries_it(self):
+        can = FakeCan(vehicle_speed=90.0, engine_rpm=2000.0, gear_position=3)
+        snap = cluster.snapshot(can, None, None, cluster_info=cluster.cluster_info({'coding': {'cluster': 'analog'}}))
+        self.assertEqual(snap['cluster']['cluster'], 'analog')
+        self.assertIs(snap['cluster']['hud'], True)
+
+
 class LevelTest(unittest.TestCase):
     def test_every_generation_has_a_level(self):
         for g in catalog.GENERATIONS:

@@ -75,7 +75,9 @@ class MarketDescriptorTest(unittest.TestCase):
         self.assertEqual(env['generation'], 'id5')
         self.assertEqual(env['coding']['language'], 'en_US')
         self.assertEqual(env['coding']['country'], 'US')
-        self.assertEqual(env['coding']['hmi_version'], 'id5')
+        self.assertEqual(env['coding']['hmi_version'], 'id5_plus_plus')   # LCI de fábrica: pastilhas pequenas
+        self.assertEqual(env['coding']['cluster'], 'analog')              # F30 dos EUA sem o Live Cockpit: telinha central
+        self.assertIs(env['coding']['hud'], False)                        # carro do dono não tem HUD: não se oferece um
 
     def test_manual_is_not_claimed(self):
         d = decode(NA_VIN)

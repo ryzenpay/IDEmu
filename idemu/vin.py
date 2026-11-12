@@ -205,10 +205,14 @@ def suggest_env(d):
     coding = {'vin': d['vin'], 'year': max(2012, min(2022, y - 1)), 'month': 7, 'lci': 1}
     if us: coding.update(language='en_US', country='US', units='imperial')
     if gen in ('id5', 'id6'):
-        coding['hmi_version'] = 'id6_light' if gen == 'id6' else 'id5'
+        # o LCI (2016+) saiu de fábrica com o iDrive 5++ (pastilhas pequenas); 'id5' é a interface pré-LCI
+        coding['hmi_version'] = 'id6_light' if gen == 'id6' else 'id5_plus_plus'
         coding['hu_variant'] = 'professional'
         coding['display'] = catalog.hu_variant('professional')['display']
         coding['navi'] = 'us' if us else 'ece'
+        # painel: o F30 americano sem o Live Cockpit vinha com ponteiros e telinha central preta; na Europa, a tela central colorida
+        coding['cluster'] = 'analog' if us else 'mid'
+        coding['hud'] = False
     name = ' '.join(x for x in [d.get('chassis'), d.get('chassis_name') if d.get('chassis_name') != d.get('chassis') else '', str(y) if d.get('model_year') else ''] if x)
     return {'generation': gen, 'series': d.get('series'), 'chassis': d.get('chassis'), 'brand': d.get('brand'), 'name': name,
             'model_name': ' · '.join(x for x in [d.get('body'), d.get('engine')] if x), 'coding': coding}

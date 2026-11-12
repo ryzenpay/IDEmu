@@ -531,6 +531,7 @@
       const ctry = opts(ct.countries, [{ code: 'BR', name: 'Brasil' }]).map((x) => [x.code, x.name]);
       const disp = opts(ct.displays, [{ code: '10_25_1440x540', name: '10,25" 1440x540' }]).map((x) => [x.code, x.name]);
       const hmiv = opts(ct.hmi_versions, [{ code: 'id6_light', name: 'iDrive 6 (tiles)' }]).map((x) => [x.code, x.name]);
+      const clu = opts(ct.clusters, [{ code: 'mid', name: 'Analógico com tela central colorida' }]).map((x) => [x.code, x.name]);
       const naviList = (ct.navi && ct.navi.length) ? opts(ct.navi, []).map((x) => [x.code, x.name]) : NAVI_OPTS;
       const huPick = IDE.huVariantPicker(() => c.hu_variant || 'professional', (id) => {
         const v = (ct.hu_variants || []).find((x) => x.id === id); c.hu_variant = id;
@@ -592,7 +593,8 @@
             h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Fase (LCI)'), sel('lci', LCI_OPTS, Number)),
             h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Tipo de display'), sel('display', disp)),
             h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Versão do HMI'), sel('hmi_version', hmiv)),
-            h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Navegação'), sel('navi', naviList)))),
+            h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Navegação'), sel('navi', naviList)),
+            h('div', { class: 'field' }, h('label', { class: 'lbl' }, 'Painel de instrumentos'), sel('cluster', clu)))),
         h('fieldset', null, h('legend', null, 'Portas no seu computador (loopback)'),
           h('div', { class: 'grid-3f' }, portIn('ssh_port', 'SSH'), portIn('can_port', 'CAN'), portIn('gps_port', 'GPS'))));
       setTimeout(() => { if (c.vin) vinUpdate(false); }, 0);

@@ -79,8 +79,9 @@ class FakeIPhone(object):
             if not on and self.state in ('off', 'disconnecting'): return self.status()
             self.gen += 1; g = self.gen
             self.state, self.step, self.error = ('connecting' if on else 'disconnecting'), '', None
+            st = self.status()          # lido antes da thread: ela pode terminar na hora (sleeps pulados em teste) e o chamador receberia 'connected' em vez do aceite
         threading.Thread(target=self._run, args=(g, on), name='fake-iphone', daemon=True).start()
-        return self.status()
+        return st
 
     # ---- internals ----
     def _live(self, g):

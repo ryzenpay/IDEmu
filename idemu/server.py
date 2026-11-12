@@ -131,7 +131,7 @@ class App:
         for r in ('os', 'brand', 'hmi'):
             if not sw.get(r) or not os.path.isfile(sw[r]): raise ApiError('arquivo SWFL ausente ou inexistente para "%s"' % r)
         cd = dict({'language': 'en_GB', 'units': 'metric', 'country': 'GB', 'vin': '', 'year': 2017, 'month': 7, 'lci': 1,
-                   'display': '10_25_1440x540', 'hmi_version': 'id6_light', 'navi': 'ece', 'hu_variant': 'professional'}, **(d.get('coding') or {}))
+                   'display': '10_25_1440x540', 'hmi_version': 'id6_light', 'navi': 'ece', 'hu_variant': 'professional', 'cluster': 'mid', 'hud': True}, **(d.get('coding') or {}))
         if not catalog.hu_variant(cd.get('hu_variant')): raise ApiError('tipo de head unit desconhecido: %s' % cd.get('hu_variant'))
         cd['navi'] = codegen.navi_value(cd.get('navi'), cd.get('country'))
         if cd.get('vin') and not re.match(r'^[A-HJ-NPR-Z0-9]{17}$', cd['vin'].upper()): raise ApiError('VIN deve ter 17 caracteres (sem I, O, Q)')
@@ -705,7 +705,20 @@ class H(BaseHTTPRequestHandler):
             rt = A.need_rt()
             if not getattr(rt, 'can', None): raise ApiError('o cluster e o HUD só existem com um ambiente em execução', 409)
             v = getattr(rt, 'v850', None)
-            return cluster.snapshot(rt.can, getattr(rt, 'gps', None), v.bridge if v else None)
+            return cluster.snapshot(rt.can, getattr(rt, 'gps', None), v.bridge if v else None, nav=getattr(rt, 'nav_feed', None), cluster_info=cluster.cluster_info(getattr(rt, 'env', None)))
+        if path == 'cluster/nav':                        # orientação de navegação externa para o cluster (plugin CarPlay Nav): idemu/cluster.NavFeed
+            rt = A.need_rt()
+            if not getattr(rt, 'can', None): raise ApiError('o cluster e o HUD só existem com um ambiente em execução', 409)
+            feed = getattr(rt, 'nav_feed', None)
+            if feed is None: feed = rt.nav_feed = cluster.NavFeed()
+            if m != 'POST': return {'nav': feed.snapshot()}
+            if not d.get('active', True):
+                feed.clear(); return {'ok': True, 'nav': None}
+            try:
+                nav = feed.set(provider=d.get('provider'), maneuver=d.get('maneuver'), street=d.get('street'), dist_m=d.get('dist_m'),
+                               remaining_m=d.get('remaining_m'), eta_min=d.get('eta_min'), destination=d.get('destination'))
+            except ValueError as e: raise ApiError(str(e))
+            return {'ok': True, 'nav': nav}
         if path == 'carplay':                            # CarPlay (iDrive 5/6): iPhone falso pelo MOST virtual (idemu/carplay.py)
             fl = A.flash_status(A.rt.id) if A.rt else {'state': 'idle'}
             if fl.get('state') == 'running':             # "Configurar CarPlay" reinicia a head unit: o progresso vem antes de exigir o ambiente rodando
@@ -846,6 +859,7 @@ class H(BaseHTTPRequestHandler):
             mode = d.pop('mode'); g.set_mode(mode, **d); return {'ok': True}
         if path == 'gps/jump': g.jump(float(d['lat']), float(d['lon'])); return {'ok': True}
         if path == 'gps/route':
+            if m != 'POST': return {'route': g.route_points()}      # leitura (telas e plugins montam a orientação sobre a rota)
             g.load_route(d.get('name') or 'rota', gpx=d.get('gpx'), points=d.get('points'), speed_kmh=float(d.get('speed_kmh', 50)), loop=bool(d.get('loop', True))); return {'ok': True}
         raise ApiError('rota desconhecida', 404)
 

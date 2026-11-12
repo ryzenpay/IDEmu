@@ -11,6 +11,7 @@ Aba **Cluster e HUD** da tela Execução. Desenha o painel de instrumentos (Komb
 | Alertas: cinto, freio de mão, porta, porta-malas, capô, motor quente ou frio, combustível baixo, pneus | Calculados dos sinais (`idemu/cluster.py`, `warnings`) |
 | HUD: velocidade, câmbio, seta de curva e distância | CAN e GPS |
 | Próxima curva e distância no HUD | **Calculadas pela geometria da rota do GPS virtual** (curva = mudança de rumo de 35° ou mais nos próximos 2 km). Sem rota, o HUD mostra só a velocidade e o câmbio |
+| Navegação no centro do painel e no HUD (manobra, rua, destino) | **Orientação publicada de fora** (`POST /api/cluster/nav`, `NavFeed` em `idemu/cluster.py`): no carro esse conteúdo vem do HMI quando ele tem guiamento, da navegação nativa ou do CarPlay; aqui quem publica é o plugin **CarPlay Nav** (`plugins/carplay-nav`, docs/CARPLAY.md). Sem atualização por 6 s o feed expira e o HUD volta à curva geométrica |
 
 `GET /api/cluster` entrega tudo isso (ver `docs/API.md`). Mude os sinais na aba CAN, ou rode um cenário, e o painel reage.
 

@@ -3,7 +3,9 @@
 The iDrive 5/6 controller has a touchpad on top of the knob. IDEmu emulates it from the web UI: the controller card of the run screen
 has an **iDrive Touch Controller** pad. Drawing on it reaches the HMI the way the real touchpad does, so the screens that use the
 touchpad respond to it: handwriting in the address and search spellers, and CarPlay (the HMI passes the touchpad on as
-`CarPlayTouchPadInput` while CarPlay has focus; bringing CarPlay up in IDEmu is separate work).
+`CarPlayTouchPadInput` while CarPlay has focus). CarPlay runs in IDEmu with the fake iPhone (`docs/CARPLAY.md`); whether the phone acts on
+`CarPlayTouchPadInput` depends on what it was told about a touchpad, so the host plugin `plugins/carplay-touch` also mirrors the pad to the
+screen as ordinary touches (a cursor over the CarPlay video) and reads its strokes as handwriting typed into CarPlay.
 
 ## Using it
 
@@ -85,5 +87,6 @@ country entry does not open in IDEmu (no map database), so the address spellers 
 ## Limits
 
 * No gesture emulation at the `CccsGestureRecognition` level (see above): screens that only react to recognised controller gestures
-  (e.g. map pinch through the controller) do not get them.
+  (e.g. map pinch through the controller) do not get them. In CarPlay the CarPlay Touch plugin's cursor mode replaces them with a
+  trackpad cursor (two-finger pad strokes stay with the passthrough); `plugins/carplay-touch`.
 * Handwriting needs macOS (Vision); on other hosts the strokes are only passed on as touches (or as the `IDEMU_HWR_FALLBACK` placeholder).

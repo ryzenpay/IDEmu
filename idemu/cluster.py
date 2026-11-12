@@ -8,8 +8,9 @@ manda a eles o conteúdo que ela gera (mensagens de check control, lista de míd
   * a próxima curva da rota é calculada aqui, pela geometria da rota do GPS virtual. Não é o guiamento do HMI: o iDrive emulado não tem motor de
     navegação, então o HMI não manda manobras ao cluster.
 
-`snapshot()` é o formato de GET /api/cluster; a tela é `IDE.tabDefs.cluster` em idemu/web/tabs.js."""
-import json, os, time
+`snapshot()` é o formato de GET /api/cluster; a tela é `IDE.tabDefs.cluster` em idemu/web/tabs.js.
+`NavFeed` é a orientação de navegação vinda de fora (plugin CarPlay Nav, ferramentas): POST /api/cluster/nav."""
+import json, os, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIGNALS = ('vehicle_speed', 'engine_rpm', 'accelerator_pos', 'coolant_temp', 'fuel_level', 'fuel_level_2', 'fuel_consumption', 'odometer', 'terminal_state',
@@ -61,6 +62,12 @@ def next_turn(route, dist_m):
         s += STEP_M
     return None
 
+def cluster_info(env):
+    """O painel que a aba desenha: variante do cluster e presenca de HUD, do codigo do carro (env.coding)."""
+    cd = (env or {}).get('coding') or {}
+    return {'cluster': cd.get('cluster') or 'mid', 'hud': bool(cd.get('hud', True)),
+            'units': cd.get('units') or 'metric'}
+
 def hu_messages(seen, now=None):
     """O que o HMI mandou ao Kombi e ao HUD (Set/Get/SetGet): lista de {dev, fkt, name, op, n, age, hex}, mais recentes primeiro."""
     now = time.time() if now is None else now
@@ -90,7 +97,7 @@ def warnings(v):
     elif v.get('headlight_low'): w.append(('low_beam', 'info'))
     return w
 
-def snapshot(can, gps, bridge=None):
+def snapshot(can, gps, bridge=None, nav=None, cluster_info=None):
     """Estado do cluster e do HUD: sinais do CAN, posição do GPS, próxima curva e mensagens do HMI para o Kombi/HUD."""
     v = {}
     for n in SIGNALS:
@@ -108,4 +115,45 @@ def snapshot(can, gps, bridge=None):
     fuel = v.get('fuel_level', 0.0)
     return {'signals': v, 'gps': g, 'fuel_pct': round(max(0.0, min(1.0, fuel / TANK_L)) * 100.0, 1), 'range_km': int(max(0.0, fuel) / max(4.0, v.get('fuel_consumption', 7.5) or 7.5) * 100.0),
             'warnings': [{'id': i, 'level': l} for i, l in warnings(v)],
+            'nav': nav.snapshot() if nav is not None else None,
+            'cluster': cluster_info,
             'hu': hu_messages(getattr(bridge, 'seen', None)), 'hu_note': 'mensagens que o HMI enviou ao Kombi (0xE0) e ao HUD (0xE1) por MOST'}
+
+
+class NavFeed(object):
+    """Orientação de navegação externa para o cluster e o HUD — o mesmo conteúdo que no carro o HMI manda ao Kombi quando tem guiamento,
+    venha ele da navegação nativa ou do CarPlay (docs/CARPLAY.md). O provedor publica a instrução corrente a cada segundo
+    (POST /api/cluster/nav); sem atualização por TTL_S segundos o feed expira e o cluster volta à curva geométrica da rota do GPS."""
+    TTL_S = 6.0
+    MANEUVERS = ('left', 'right', 'uturn', 'straight', 'arrive')
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.entry = None
+
+    def set(self, provider='external', maneuver='straight', street='', dist_m=None, remaining_m=None, eta_min=None, destination=''):
+        """Publica a instrução corrente e devolve o instantâneo. Levanta ValueError com manobra desconhecida."""
+        maneuver = str(maneuver or 'straight').lower()
+        if maneuver not in self.MANEUVERS: raise ValueError('manobra desconhecida: %s' % maneuver)
+
+        def n(x):
+            try: return max(0, int(round(float(x))))
+            except (TypeError, ValueError): return None
+        with self.lock:
+            self.entry = {'provider': str(provider or 'external')[:32], 'maneuver': maneuver, 'street': str(street or '')[:80],
+                          'dist_m': n(dist_m), 'remaining_m': n(remaining_m), 'eta_min': n(eta_min),
+                          'destination': str(destination or '')[:80], 't': time.time()}
+        return self.snapshot()
+
+    def clear(self):
+        with self.lock: self.entry = None
+
+    def snapshot(self, now=None):
+        """Cópia da instrução corrente, ou None quando não há feed ou expirou (sem atualização há TTL_S segundos)."""
+        with self.lock: e = self.entry
+        if e is None: return None
+        if (time.time() if now is None else now) - e['t'] > self.TTL_S:
+            with self.lock:
+                if self.entry is e: self.entry = None
+            return None
+        return dict(e)

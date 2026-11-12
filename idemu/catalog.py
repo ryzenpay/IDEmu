@@ -98,9 +98,13 @@ LEVEL_NOTES = {
             'media': ('none', 'Sem rádio nem fonte de áudio'), 'usb': ('none', 'Sem controlador USB virtual'),
             'phone': ('full', 'Tela, toque, botões e GPS pelo celular (Wi-Fi); com PHONE_TYPE=internal_phone na codificação o HMI mostra Telefone, Bluetooth e Dispositivos móveis, mas nenhum celular pareia (sem rádio Bluetooth nem USB)')},
     'id5': {'touch': ('half', 'A tela leva vários segundos para refletir cada toque'), 'rotor': ('half', 'A tela leva vários segundos para refletir cada entrada'),
-            'can': ('half', 'Mesma ponte do iDrive 6, menos testada'), 'map': ('none', 'O HMI cai nos menus de navegação; mapa não verificado'),
+            'can': ('half', 'Mesma ponte do iDrive 6, menos testada'), 'map': ('half', 'O painel de pré-visualização mostra o mapa; a tela Mapa completa ainda não foi verificada'),
             'cluster': ('half', 'Painel virtual pelo CAN e pelo GPS; o HMI não manda conteúdo a ele'), 'media': ('none', 'Sem rádio nem fonte de áudio'),
-            'usb': ('none', 'Sem controlador USB virtual'), 'stable': ('half', 'O HMI cai de vez em quando')},
+            'usb': ('none', 'Sem controlador USB virtual')},
+    'id5p': {'touch': ('half', 'A tela leva vários segundos para refletir cada toque'), 'rotor': ('half', 'A tela leva vários segundos para refletir cada entrada'),
+            'can': ('half', 'Mesma ponte do iDrive 6, menos testada'), 'map': ('half', 'O painel de pré-visualização mostra o mapa; a tela Mapa completa ainda não foi verificada'),
+            'cluster': ('half', 'Painel virtual pelo CAN e pelo GPS; o HMI não manda conteúdo a ele'), 'media': ('none', 'Sem rádio nem fonte de áudio'),
+            'usb': ('none', 'Sem controlador USB virtual')},
     'id7': {'screen': ('half', 'Tela central e do banco traseiro (uma por ambiente); sem mapa, mídia nem dados do carro'), 'rotor': ('half', 'Rotor, setas, MENU, BACK, OPTION, MEDIA e COM funcionam; MAP e NAV não'),
             'can': ('none', 'O CAN simulado só alimenta o cluster virtual; o HMI não o recebe'), 'map': ('none', 'Sem GPS nem mapa'), 'cluster': ('half', 'Painel virtual e HUD pelo CAN e pelo GPS simulados do IDEmu (aba Cluster e HUD); o HMI não os recebe nem manda conteúdo ao painel'), 'phone': ('half', 'Tela e toque; sem GPS'),
             'coding': ('half', 'Edita 1.288 parâmetros e a VM reinicia para aplicar; o efeito depende dos serviços que o HMI ainda não encontra'), 'media': ('none', 'Sem rádio nem áudio'), 'usb': ('none', 'Sem pen drive'), 'stable': ('half', 'O primeiro boot leva cerca de 2 minutos; os seguintes, cerca de 1 segundo')},
@@ -125,11 +129,17 @@ def level_of(gen_id):
 GENERATIONS = [
     {'id': 'id6', 'name': 'iDrive 6', 'sub': 'NBT Evo · 2016–2020 · QNX 6.5', 'hmi_version': 'id6_light', 'supported': True},
     {'id': 'id5', 'name': 'iDrive 5', 'sub': 'NBT / NBT Evo · usa os mesmos arquivos do iDrive 6', 'hmi_version': 'id5', 'supported': True},
+    {'id': 'id5p', 'name': 'iDrive 5++', 'sub': 'NBT Evo · o iDrive 5 do LCI (2016–2019): pastilhas pequenas na horizontal', 'hmi_version': 'id5_plus_plus', 'supported': True},
     {'id': 'id4', 'name': 'CIC', 'sub': 'CIC High · Harman "BMW L6" · SH-4A + QNX 6.3 · lê os pacotes 3a6 e 417 da PSdZData', 'hmi_version': 'id4', 'supported': True, 'direct': 'cic'},
     {'id': 'id7', 'name': 'iDrive 7', 'sub': 'MGU · Linux x86 · tela central ou do banco traseiro (RSE) · lê os arquivos direto da PSdZData', 'hmi_version': 'id7', 'supported': True, 'direct': 'mgu7'},
     {'id': 'id8', 'name': 'iDrive 8', 'sub': 'MGU22 · Linux ARM64 · BMW i7 G70 · lê os arquivos direto da PSdZData', 'hmi_version': 'id8', 'supported': True, 'direct': 'mgu22'},
 ]
 for _g in GENERATIONS: _g['level'] = level_of(_g['id'])
+
+# Painel de instrumentos do carro (não é codificação do firmware: é o que a aba "Cluster e HUD" desenha).
+# 'analog' = ponteiros com telinha central pequena preta (série 3 F30 sem o Live Cockpit, mercado americano);
+# 'mid' = ponteiros com a tela central colorida grande; 'digital' = o painel todo digital (Live Cockpit Professional).
+CLUSTERS = [('mid', 'Analógico com tela central colorida'), ('analog', 'Analógico com telinha central (EUA)'), ('digital', 'Totalmente digital (Live Cockpit Professional)')]
 
 def scan_folder(root, wanted, max_depth=7, max_seconds=25):
     # Procura em root arquivos swfl_<id>.bin.<versão> (ids em wanted): raiz do psdzdata, pasta swe/swfl ou qualquer pasta que os contenha.
@@ -172,7 +182,8 @@ def build_catalog(psdz):
     ok = psdz_ok(psdz)
     cat = {'psdz_ok': ok, 'series': [], 'roles': [], 'by_series': {}, 'languages': [{'code': c, 'name': n} for c, n in LANGS],
            'countries': [{'code': c, 'name': n} for c, n in COUNTRIES], 'displays': [{'code': c, 'name': n} for c, n in DISPLAYS],
-           'hmi_versions': [{'code': c, 'name': n} for c, n in (('id6_light', 'iDrive 6 (tiles)'), ('id6', 'iDrive 6 completo'), ('id5', 'iDrive 5'))],
+           'hmi_versions': [{'code': c, 'name': n} for c, n in (('id6_light', 'iDrive 6 (tiles)'), ('id6', 'iDrive 6 completo'), ('id5', 'iDrive 5'), ('id5_plus_plus', 'iDrive 5++ (pastilhas pequenas)'))],
+           'clusters': [{'code': c, 'name': n} for c, n in CLUSTERS],
            'navi': [{'code': c, 'name': NAVI_NAMES.get(c, c)} for c in codegen.enum_values('NAVI_VARIANTE')], 'generations': GENERATIONS, 'hu_variants': HU_VARIANTS}
     baureihe = set(codegen.enum_values('BAUREIHE'))
     sids = series_available(psdz) if ok else sorted(SERIES_INFO)      # sem a pasta psdzdata, o catálogo vem da lista interna

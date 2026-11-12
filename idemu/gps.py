@@ -493,6 +493,14 @@ class GpsSim(object):
                     "radius_m": self.radius_m, "configured_speed_kmh": self.speed_kmh,
                     "sync_dir": self.sync_dir, "loop": self.loop, "rate_hz": self.rate_hz}
 
+    def route_points(self):
+        """Rota carregada: {'name', 'length_m', 'progress_m', 'points': [[lat, lon], ...]} ou None. GET /api/gps/route."""
+        with self._lock:
+            if self.route is None:
+                return None
+            return {"name": self.route.name, "length_m": round(self.route.length_m, 1), "progress_m": round(self.route_dist, 1),
+                    "points": [[p[0], p[1]] for p in self.route.points]}
+
     def set(self, **kw):
         with self._lock:
             allowed = {"lat", "lon", "alt", "speed_kmh", "heading", "sats", "hdop", "fix", "sync_can_speed",

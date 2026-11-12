@@ -42,6 +42,28 @@ A real iPhone cannot connect: it checks the accessory's Apple MFi authentication
 * **Display.** IDEmu's default for `UserMonitorControl` (SystemFunctionPowerMode 0xD1/2, 0x432) is 1: with 0 the HMI switched the
   display off whenever it re-read that property, a few seconds into CarPlay.
 
+## Touch controller in CarPlay (plugin CarPlay Touch)
+
+On the pad the HMI passes CarPlay's touches to the phone as `CarPlayTouchPadInput` (0xCD4) — but a phone uses them only if the head unit declared a
+touchpad to it (`[TouchPadInput]` in Connectivity's `carplay.ini`, which the stock configuration does not), so the touch controller often does
+nothing in CarPlay. The host plugin **`plugins/carplay-touch`** mirrors the same pad strokes to the input every iPhone honours: touches on the
+screen, injected host-side (`POST /api/input/click` → the HMI's `CarPlayTouchInput` 0xCD5). **Cursor** mode turns the pad into a trackpad: strokes
+move a cursor over the CarPlay video area (its rectangle read live from the renderer log), a tap is a click, a drag drags — with "Show keystrokes"
+on, each mirrored touch appears on the video as the 0xCD5 line the phone would receive. **Typing** mode reads the strokes as handwriting with the
+recognizer of the HMI spellers (`idemu/hwr.py`) and enters the characters into CarPlay's text fields; without a phone to tap a keyboard they join
+the plugin's buffer and the list on the video. The mirror watches every pad event (`Runtime.touchpad`), runs while the HMI's `CccsTouchControl`
+says CarPlay holds the pad and never while one of the HMI's spellers holds it — speller handwriting is untouched. `plugins/carplay-touch/README.md`.
+
+## Navigation to the cluster (plugin CarPlay Nav)
+
+In the car the Kombi never sees CarPlay: the head unit turns the phone's guidance into the same cluster navigation content its own maps would
+produce. IDEmu does the same thing from the other side. The virtual cluster exposes a **guidance feed** (`NavFeed`, `idemu/cluster.py`, fed by
+`POST /api/cluster/nav`, expiring after 6 s without updates), and the host plugin **`plugins/carplay-nav`** is the phone-side provider: it plays
+the role of the iPhone's Maps. The plugin builds a maneuver list (from the virtual GPS route via `GET /api/gps/route`, or by hand), advances it
+at the car's speed and publishes the current instruction once per second; the cluster tab then shows the maneuver, the street and the destination
+in the center of the panel and the HUD follows it instead of the geometric turn. Any other tool can publish the same way — the feed does not care
+who guides. `plugins/carplay-nav/README.md`, `docs/API.md`.
+
 ## API
 
 * `GET /api/carplay` -> `{state: off|connecting|connected|disconnecting|error, step, error, name, show_keys, missing: [...], flash}`

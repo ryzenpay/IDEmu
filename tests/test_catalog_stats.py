@@ -15,7 +15,7 @@ class CatalogTest(unittest.TestCase):
         self.assertTrue(c['series'] and c['generations'])
         self.assertEqual([r['id'] for r in c['roles'][:2]], ['0000271a', '00002720'])
         self.assertTrue(all(r['files'] == [] for r in c['roles']))
-        self.assertEqual([g['id'] for g in c['generations'] if g['supported']], ['id6', 'id5', 'id4', 'id7', 'id8'])
+        self.assertEqual([g['id'] for g in c['generations'] if g['supported']], ['id6', 'id5', 'id5p', 'id4', 'id7', 'id8'])
 
     def test_scan_nested_and_versions(self):
         for f in ('swfl_0000271a.bin.007_051_002', 'swfl_00002719.bin.007_039_008', 'swfl_00002719.bin.007_051_002', 'swfl_99999999.bin.001_001_001', 'swfl_00002720.bin.bak'):
