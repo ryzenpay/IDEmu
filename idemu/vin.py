@@ -6,7 +6,8 @@ O que o VIN traz (ISO 3779 e o padrão da BMW):
   8    restrição/airbag, 9 dígito verificador (obrigatório só na América do Norte), 10 ano-modelo, 11 fábrica, 12–17 número de série.
 
 A tabela de tipos não vai no repositório: ela é lida da base KIS da sua PSdZData (kiswb/<série>/KIS.data, tabela FAHRZEUGTYP, banco HSQLDB) e
-guardada em cache/vin_types.json na primeira consulta (cerca de 1 minuto para ~4.800 tipos).
+guardada em cache/vin_types.json na primeira consulta (cerca de 1 minuto para ~4.800 tipos). VINs do mercado norte-americano trazem no chassi um
+código de mercado (terminado em letra, ex. 8B9G) que a KIS não lista: nesses casos a variante da KIS é escolhida pelo prefixo do código, mercado e fábrica.
 
 O VIN não traz a lista de opcionais do carro (o "FA"): o tipo de head unit (Professional, Business ou EntryNav) continua sendo escolha do usuário."""
 import glob, json, mmap, os, re, struct, threading, time
@@ -38,6 +39,9 @@ ID7_FROM = {'G01': 2020, 'G02': 2020, 'G11': 2020, 'G12': 2020, 'G30': 2020, 'G3
 _lock = threading.Lock()
 _state = {'state': 'idle', 'error': None, 'pct': 0}
 _types = None
+
+# Códigos de fábrica do VIN cujo MLAND da KIS é certo (servem só para escolher a variante na pesquisa aproximada):
+PLANT_MLAND = {'D': 'DEU', 'M': 'DEU', 'R': 'DEU', 'N': 'ZAF', 'S': 'USA'}
 
 
 # ------------------------------------------------------------------------------------------------ tabela de tipos (KIS)
@@ -125,13 +129,14 @@ def chassis_code(ebr, known=None):
     if m: return 'RR%02d' % int(m.group(2))
     return ebr[:3] if re.match(r'^[A-Z]\d\d', ebr) else ebr
 
-def generation(chassis, year):
+def generation(chassis, year, engine=''):
     """Geração do iDrive provável para o chassi e o ano-modelo: 'id4' (CIC), 'id5'/'id6' (NBT Evo), 'id7' (MGU), 'id8' (MGU22) ou None."""
     from . import catalog
     y = year or 0
     if chassis in ID8 or (chassis in ID8_FROM and y >= ID8_FROM[chassis]): return 'id8'
     if chassis in ID7_ALWAYS or (chassis in ID7_FROM and y >= ID7_FROM[chassis]): return 'id7'
     if any(chassis in chs for _, chs, _ in catalog.SERIES_INFO.values()):
+        if y >= 2017 and (engine or '').startswith(('B46', 'B48')): return 'id6'     # motor LCI (série B, 07/2016 em diante): a central já é NBT Evo com iDrive 6
         return 'id6' if y >= 2018 else 'id5'                 # ano-modelo 2018 = produção a partir de 07/2017 (iDrive 6); antes, iDrive 5 (NBT Evo ID5/ID4)
     if re.match(r'^E\d\d', chassis or '') or (y and y <= 2012): return 'id4'
     return None
@@ -155,6 +160,15 @@ def decode(vin, psdz=None, wait=False):
     types = load_types(psdz or catalog.load_settings().get('psdz_path'), wait=wait)
     out['table'] = table_status()
     t = (types or {}).get(tkey)
+    approx = None
+    if not t and types:
+        m4 = re.match(r'^([0-9][A-Z0-9][0-9])[A-Z]$', tkey)     # VIN norte-americano traz letra de mercado no fim do código (ex.: 8B9G); a KIS sempre grava o tipo terminando em número (8B93/8B97)
+        if m4:
+            cands = sorted(k for k in types if k[:3] == tkey[:3] and len(k) == 4 and k[3].isdigit())
+            if cands:
+                pick = [k for k in cands if (types[k].get('AUSF') == 'US') == (out['check_digit_ok'] and v[8].isdigit())] or cands
+                pick = [k for k in pick if types[k].get('MLAND') == PLANT_MLAND.get(v[10], '')] or pick
+                t, approx = types[pick[0]], pick[0]
     known = set(codegen.enum_values('BAUREIHE'))
     if t:
         ch = chassis_code(t.get('EBR'), known)
@@ -168,13 +182,16 @@ def decode(vin, psdz=None, wait=False):
                    body=BODY.get(t.get('KFORM'), t.get('KFORM') or ''), engine=engine, engine_code=t.get('MOT', ''), drive=DRIVE.get(t.get('ANTR'), t.get('ANTR') or ''),
                    gearbox=GEARBOX.get(t.get('GETR'), ''), steering='direita' if t.get('LENK') == 'RL' else 'esquerda', market='EUA/Canadá' if t.get('AUSF') == 'US' else 'Europa e resto do mundo',
                    us=t.get('AUSF') == 'US', m_sport=t.get('MSPORT') == 'MS', kis_series=t.get('ms'))
+        if approx:
+            out['approx'] = approx
+            out['notes'].append('O VIN norte-americano usa o código %s; a base KIS registra o mesmo carro como %s — os dados abaixo vêm de %s.' % (tkey, approx, approx))
     elif types is None:
         out['notes'].append('A tabela de tipos está sendo montada a partir da sua PSdZData (cerca de 1 minuto). Tente de novo em instantes.')
         return out
     else:
         out['notes'].append('O código de tipo %s não está na base KIS da sua PSdZData (carro mais antigo que a série F ou de outra marca).' % tkey)
         out['brand'] = brand_w or 'bmw'
-    out['generation'] = generation(out.get('chassis', ''), year)
+    out['generation'] = generation(out.get('chassis', ''), year, out.get('engine_code', ''))
     out['series'] = series_of(out.get('chassis', ''))
     out['env'] = suggest_env(out)
     return out
