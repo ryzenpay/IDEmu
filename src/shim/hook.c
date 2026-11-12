@@ -254,10 +254,10 @@ static int hk_mapsurf(void *self,u32 surf,u32 w,u32 h,u8 *out){ if(!w||!h) retur
 static void hk_unmapsurf(void *self,u32 surf,u8 *sh){ void *img=*(void**)(sh+0xc); u32 len=*(u32*)(sh+8); void *m=*(void**)(sh+0x10); if(img) munmap(img,len); if(m) free(m); *(u32*)(sh+8)=0; *(u32*)(sh+0xc)=0; *(u32*)(sh+0x10)=0; br_logx("map: superficie removida",surf,0,0); }
 /* diagnóstico: sem o gerenciador de falhas do carro, uma queda do HMI não deixava rastro; registra de onde veio e devolve ao tratamento padrão */
 extern void (*signal(int,void(*)(int)))(int);
-static void crash_h(int sg,u32 *info,u32 *uc){ static int n; if(n++==0){ br_logx("CRASH sinal",(u32)sg,(u32)info,(u32)uc);
+static void crash_h(int sg,u32 *info,u32 *uc){ static int n; static void(*prev[32]); int k=sg&31; if(!prev[k]) prev[k]=signal(sg,(void(*)(int))crash_h); if(n++==0){ br_logx("CRASH sinal",(u32)sg,(u32)info,(u32)uc);
     if((u32)info>0x1000&&(u32)info<0xf0000000){ br_logx("CRASH info",info[0],info[1],info[2]); br_logx("CRASH info2",info[3],info[4],info[5]); }
-    if((u32)uc>0x1000&&(u32)uc<0xf0000000){ for(int i=0;i<64;i+=4) if(uc[i]||uc[i+1]||uc[i+2]||uc[i+3]){ br_logx("CRASH ctx",i,uc[i],uc[i+1]); br_logx(" ",uc[i+2],uc[i+3],0); } }
-    hk_bt("crash"); } signal(sg,(void(*)(int))0); }
+    if((u32)uc>0x1000&&(u32)uc<0xf0000000){ for(int i=0;i<96;i+=4) { br_logx("CRASH ctx",i,uc[i],uc[i+1]); br_logx(" ",uc[i+2],uc[i+3],0); } }
+    hk_bt("crash"); } signal(sg,prev[k]?prev[k]:(void(*)(int))0); } /* devolve a disposicao anterior do HMI (ele mesmo trata e segue); so mata quando era SIG_DFL */
 void install_hooks(void){ static int done; if(__atomic_exchange_n(&done,1,__ATOMIC_ACQ_REL)) return;
 #ifdef CRASHHK   /* diagnóstico de quedas (-DCRASHHK): ligado, o iDrive 5 não termina de subir (sinal capturado no boot); desligado por padrão */
   signal(11,(void(*)(int))crash_h); signal(10,(void(*)(int))crash_h); signal(4,(void(*)(int))crash_h); signal(8,(void(*)(int))crash_h);

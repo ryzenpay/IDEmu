@@ -1,6 +1,13 @@
 /* Fake libilmClient: no LayerManagerService; the HMI's EGL window goes straight to the host.
    Layer notifications are answered so that WAL3D believes its layers are visible and keeps rendering. */
 #include "common.h"
+/* clangs recentes emitem chamadas a esses helpers EABI de limpamento; a libc.so.3 do firmware NAO os exporta
+   (o ld.lld nao reclama porque libscreen.so.1 esta no NEEDED e a busca e global). Implementar aqui, senao o
+   ldqnx mata o HMI no boot: ldd:FATAL: Unresolved symbol "__aeabi_memclr8" called from libilmClient.gpp.so.1 */
+void *__aeabi_memclr(void *d, unsigned long n){ return memset(d, 0, n); }
+void *__aeabi_memclr4(void *d, unsigned long n){ return memset(d, 0, n); }
+void *__aeabi_memclr8(void *d, unsigned long n){ return memset(d, 0, n); }
+
 typedef u32 U;
 #define OK(n) int n(U a,U b,U c,U d){ br_logx("ilm: " #n,a,b,c); return 0; }
 typedef void (*notif_t)(U layer,void *props,U mask);
