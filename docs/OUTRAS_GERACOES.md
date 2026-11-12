@@ -23,6 +23,8 @@ Linux/WSL2 (2026-11-11, ambiente `f30-330i-id5` criado pelo VIN do dono, WBA8B9G
 
 **Diagnóstico de quedas:** o shim tem um capturador de SIGSEGV opcional (`EXTRA_CF=-DCRASHHK` no build) que registra sinal, siginfo e 24 palavras do contexto e devolve a disposição anterior do HMI. Ele serve para achar o endereço da queda; por enquanto desligado por padrão (captura a queda de sonda do WAL3D no boot e atrasa a subida).
 
+**Depois de mudar a codificação que o HMI usa** (ex.: `hmi_version`), o servidor descarta o snapshot e o próximo arranque é frio: o snapshot é a memória do HMI e embute a interface do último boot — retomar quente com outra interface congelaria a tela pela metade.
+
 O pacote `001_060_001`, que `System files/ID5` chama de ID5, é outra coisa: um NBT Evo mais antigo com o HMI em `opt/hmi/ID4`. Os endereços fixos do shim não valem para esse binário; não foi testado.
 
 ## iDrive 8 (MGU22)

@@ -154,6 +154,7 @@ class App:
         if 'fast_boot' in d: env['fast_boot'] = bool(d['fast_boot'])
         if 'coding' in d:
             if not isinstance(d['coding'], dict): raise ApiError('coding deve ser um objeto')
+            old_coding = dict(env.get('coding') or {})
             env['coding'].update(d['coding'])
             v = (env['coding'].get('vin') or '').upper(); env['coding']['vin'] = v
             if v and not vin.VIN_RE.match(v): raise ApiError('VIN deve ter 17 caracteres (sem I, O, Q)')
@@ -169,6 +170,11 @@ class App:
             try: self._rebuild_shim(eid, env)
             except Exception as e:
                 raise ApiError('falha ao regravar a codificação: %s' % e, 500)
+            if 'coding' in d:
+                try:    # o snapshot é a memória do HMI: embute a interface e a codificação do último boot (mudar HMI_ID_VERSION e retomar aquente congela a tela)
+                    if old_coding and codegen.profile_for(env) != codegen.profile_for(dict(env, coding=old_coding)):
+                        shutil.rmtree(os.path.join(self.env_dir(eid), 'snapshot'), ignore_errors=True)
+                except Exception: pass
         self.save_env(env)
         return self.load_env(eid)
     def _extract_cfg(self, env, os_dir):
