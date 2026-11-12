@@ -31,7 +31,7 @@ extern int usleep(unsigned);
 int screen_flush_context(void*c,int f){ return 0; }
 int screen_create_event(void**e){ *e=newobj(K_BUF); L("screen_create_event",(u32)*e,0,0); return 0; }
 int screen_destroy_event(void*e){ return 0; }
-int screen_get_event(void*c,void*e,u64 timeout){ usleep(timeout&&timeout<20000000ULL?timeout/1000:20000); ((obj_t*)e)->iv[0][0]=0; return 0; }
+int screen_get_event(void*c,void*e,u64 timeout){ u32 t=timeout&&timeout<20000000U?(u32)timeout:0; usleep(t?t/1000:20000); ((obj_t*)e)->iv[0][0]=0; return 0; }
 int screen_send_event(void*c,void*e,int pid){ L("screen_send_event",pid,0,0); return 0; }
 int screen_get_event_property_iv(void*e,u32 pn,s32*out){ obj_t*o=(obj_t*)e; u32 i; for(i=0;i<4;i++) out[i]=0; L("screen_get_event_property_iv",pn,0,0); return 0; }
 int screen_get_event_property_pv(void*e,u32 pn,void**out){ *out=0; L("screen_get_event_property_pv",pn,0,0); return 0; }
