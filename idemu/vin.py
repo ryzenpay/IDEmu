@@ -25,7 +25,7 @@ YEAR_CODES = 'ABCDEFGHJKLMNPRSTVWXY'           # 2010..2030 (I, O, Q, U, Z e 0 n
 BODY = {'LIM': 'sedã', 'TOU': 'Touring (perua)', 'COU': 'cupê', 'CAB': 'conversível', 'SAV': 'SUV', 'SAC': 'SUV cupê', 'SAT': 'SUV/Touring', 'HAT': 'hatch',
         'SHA': 'Gran Coupé/hatch', 'CLU': 'Clubman', 'MPV': 'monovolume', 'ROA': 'roadster'}
 DRIVE = {'RWD': 'tração traseira', 'AWD': 'tração integral (xDrive/ALL4)', 'FWD': 'tração dianteira'}
-GEARBOX = {'A': 'automático', 'M': 'manual', 'X': 'manual ou automático'}
+GEARBOX = {'A': 'automático'}      # só 'A' é seguro: nas KIS atuais o 'M' é código de família da caixa (o F30 automático dos EUA vem marcado 'M') e o 'X' cobre tudo que é moderna de série
 BRAND_KIS = {'BM': 'bmw', 'MI': 'mini', 'RR': 'rr', 'BI': 'bmw_i'}
 # Chassis por geração do iDrive (a partir do ano-modelo quando a série mudou de central no meio da vida).
 ID8 = {'I20', 'G60', 'G61', 'G68', 'G70', 'G73', 'G45', 'G48', 'G90', 'G99', 'U06', 'U10', 'U11', 'U12', 'U25', 'F65', 'F66', 'F67', 'F70', 'F74', 'J01', 'J05'}
@@ -129,15 +129,14 @@ def chassis_code(ebr, known=None):
     if m: return 'RR%02d' % int(m.group(2))
     return ebr[:3] if re.match(r'^[A-Z]\d\d', ebr) else ebr
 
-def generation(chassis, year, engine=''):
+def generation(chassis, year):
     """Geração do iDrive provável para o chassi e o ano-modelo: 'id4' (CIC), 'id5'/'id6' (NBT Evo), 'id7' (MGU), 'id8' (MGU22) ou None."""
     from . import catalog
     y = year or 0
     if chassis in ID8 or (chassis in ID8_FROM and y >= ID8_FROM[chassis]): return 'id8'
     if chassis in ID7_ALWAYS or (chassis in ID7_FROM and y >= ID7_FROM[chassis]): return 'id7'
     if any(chassis in chs for _, chs, _ in catalog.SERIES_INFO.values()):
-        if y >= 2017 and (engine or '').startswith(('B46', 'B48')): return 'id6'     # motor LCI (série B, 07/2016 em diante): a central já é NBT Evo com iDrive 6
-        return 'id6' if y >= 2018 else 'id5'                 # ano-modelo 2018 = produção a partir de 07/2017 (iDrive 6); antes, iDrive 5 (NBT Evo ID5/ID4)
+        return 'id6' if y >= 2018 else 'id5'                 # ano-modelo 2018 = produção a partir de 07/2017 (iDrive 6); antes, iDrive 5 (NBT Evo ID5/ID4). O LCI de 2017 saiu com iDrive 5 e tem atualização de software para o 6 (nota no decode)
     if re.match(r'^E\d\d', chassis or '') or (y and y <= 2012): return 'id4'
     return None
 
@@ -191,7 +190,9 @@ def decode(vin, psdz=None, wait=False):
     else:
         out['notes'].append('O código de tipo %s não está na base KIS da sua PSdZData (carro mais antigo que a série F ou de outra marca).' % tkey)
         out['brand'] = brand_w or 'bmw'
-    out['generation'] = generation(out.get('chassis', ''), year, out.get('engine_code', ''))
+    out['generation'] = generation(out.get('chassis', ''), year)
+    if out.get('generation') == 'id5' and year == 2017 and (out.get('engine_code') or '').startswith(('B46', 'B48')):
+        out['notes'].append('O LCI de 2017 saiu de fábrica com o iDrive 5 e tem atualização de software para o iDrive 6: no assistente dá para escolher qualquer um dos dois.')
     out['series'] = series_of(out.get('chassis', ''))
     out['env'] = suggest_env(out)
     return out
