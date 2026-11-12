@@ -17,6 +17,8 @@ Verificado no ambiente `f30-idrive-5` (criado neste teste, pode ser apagado): me
 
 **Não está estável:** em cerca de 5 minutos de uso nos menus de navegação, o HMI saiu 3 vezes com status 139 (SIGSEGV). A primeira foi ao carregar ícones do menu de destino (`icon_nav_map_cb_content_poi`); depois de reiniciar, ele caiu de novo logo depois de criar o shader `mat_outline_preview`. A causa não foi encontrada. A tela Mapa não chegou a abrir nesse ambiente, então **o mapa não foi verificado no iDrive 5**. Os avisos `Failed to retrieve resource` (`CGfxWidgetAsset.cpp:1068`) aparecem nesse modo, por exemplo em Notificações.
 
+Linux/WSL2 (2026-11-11, ambiente `f30-330i-id5` criado pelo VIN do dono, WBA8B9G59HNU51104): o mesmo `007_051_002` cai do mesmo jeito, em ciclo de ~25 s com o supervisor reiniciando (`IDEMU_HMI_EXIT 139`), sempre com a mesa de pré-visualização do menu (o controlador 3D) branca; a tabela de ganchos é a mesma do ambiente iDrive 6 que roda estável, então o problema é do HMI no modo ID5, não da porta. Assinaturas novas no log: `ASSERTION ... CHmiNaviUpdateProgressActivity.cpp:136 ... incorrect Database Source!` (o HMI pede a base de navegação, que não existe na imagem — com a codificação `navi=keine_navi` o item Navegação sai do menu), `CDevManMachineInterface.cpp:303 ... m_pDxsPlugin.isValid()` e, pouco antes da queda, `CGfxScript.cpp:47 ... Script calculateControllerPosition failed!`.
+
 O pacote `001_060_001`, que `System files/ID5` chama de ID5, é outra coisa: um NBT Evo mais antigo com o HMI em `opt/hmi/ID4`. Os endereços fixos do shim não valem para esse binário; não foi testado.
 
 ## iDrive 8 (MGU22)
