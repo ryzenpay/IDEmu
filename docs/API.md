@@ -52,6 +52,8 @@ O catálogo traz a lista em `hu_variants`; a PSdZData só tem o firmware do NBT 
 ## VIN
 GET  /api/vin/decode?vin=<17 caracteres> -> {vin, wmi, maker, type_key, model_year, found, chassis, chassis_name, brand, body, engine, drive, gearbox, steering, market, us,
      generation ("id4".."id8"), series, check_digit_ok, notes:[...], table:{state:"ready|building|error", pct}, env:{generation, series, chassis, brand, name, model_name, coding:{...}}}
+     VINs do mercado norte-americano trazem um código de tipo de mercado (letra no fim, ex. 8B9G) que a KIS não lista: a variante da KIS é escolhida pelo prefixo,
+     mercado e fábrica, e a resposta traz `approx` com o tipo usado (ex. "8B97") e uma nota explicando.
      A tabela de tipos (posições 4–7 do VIN) vem da base KIS da PSdZData (`kiswb/<série>/KIS.data`) e fica em `cache/vin_types.json`; na primeira consulta ela é montada em segundo plano
      (`table.state = "building"`, ~15 s) e a resposta repete o pedido mais tarde. O VIN não traz os opcionais do carro: o tipo de head unit continua sendo escolha do usuário.
 POST /api/env/<id>/vin {"vin":"...", "hu_variant":"business"?} -> {env, decode, notes:[...]}   (grava o VIN; no iDrive 5/6 também chassi, série, ano, versão do HMI e mercado, se a marca for a mesma)
