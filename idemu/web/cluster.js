@@ -13,7 +13,7 @@
     const [x0, y0] = pol(cx, cy, r, d0), [x1, y1] = pol(cx, cy, r, d1);
     return ['M', f1(x0), ' ', f1(y0), 'A', r, ' ', r, ' 0 ', d1 - d0 > 180 ? 1 : 0, ' 1 ', f1(x1), ' ', f1(y1)].join('');
   }
-  function dial(cx, cy, r, max, major, minorPer, labelFn, redFrom) {
+  function dial(cx, cy, r, max, major, minorPer, labelFn, redFrom, col, name) {
     let s = `<circle cx="${cx}" cy="${cy}" r="${r + 14}" fill="#05070b" stroke="#2a313d" stroke-width="3"/><circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1b212b" stroke-width="2"/>`;
     if (redFrom != null) s += `<path d="${arc(cx, cy, r - 6, START + SWEEP * redFrom / max, START + SWEEP)}" fill="none" stroke="#d6281c" stroke-width="10"/>`;
     const n = Math.round(max / major) * minorPer;
@@ -21,9 +21,9 @@
       const v = i * major / minorPer, d = START + SWEEP * v / max, big = i % minorPer === 0;
       const [x0, y0] = pol(cx, cy, r - (big ? 24 : 14), d), [x1, y1] = pol(cx, cy, r - 2, d);
       s += `<line x1="${f1(x0)}" y1="${f1(y0)}" x2="${f1(x1)}" y2="${f1(y1)}" stroke="${big ? '#f2f4f7' : '#8d96a5'}" stroke-width="${big ? 4 : 2}"/>`;
-      if (big) { const [tx, ty] = pol(cx, cy, r - 50, d); s += `<text x="${f1(tx)}" y="${f1(ty + 9)}" text-anchor="middle" font-size="26" font-weight="600" fill="#e8ebf0">${labelFn(v)}</text>`; }
+      if (big) { const [tx, ty] = pol(cx, cy, r - 50, d); s += `<text x="${f1(tx)}" y="${f1(ty + 9)}" text-anchor="middle" font-size="26" font-weight="600" fill="${col || '#e8ebf0'}">${labelFn(v)}</text>`; }
     }
-    return s + `<g class="needle" data-needle="${cx}"><polygon points="${cx - 5},${cy + 28} ${cx + 5},${cy + 28} ${cx + 2},${cy - r + 8} ${cx - 2},${cy - r + 8}" fill="#ff5a1f"/></g><circle cx="${cx}" cy="${cy}" r="14" fill="#11151c" stroke="#ff5a1f" stroke-width="3"/>`;
+    return s + `<g class="needle" data-needle="${name || cx}" data-pivot="${cx} ${cy}"><polygon points="${cx - 5},${cy + 28} ${cx + 5},${cy + 28} ${cx + 2},${cy - r + 8} ${cx - 2},${cy - r + 8}" fill="#ff5a1f"/></g><circle cx="${cx}" cy="${cy}" r="14" fill="#11151c" stroke="#ff5a1f" stroke-width="3"/>`;
   }
   const arrowPath = (kind) => ({
     left: '<path d="M0 64V0Q0 -30 -34 -30H-44" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="butt"/><polygon points="-40,-62 -86,-30 -40,2" fill="currentColor"/>',
@@ -35,8 +35,8 @@
   const DIGITAL_SVG = `<svg viewBox="0 0 1280 480" xmlns="${SVGNS}" role="img" aria-label="Instrument cluster" class="cl-svg">
     <rect width="1280" height="480" rx="26" fill="#020306"/>
     <rect x="3" y="3" width="1274" height="474" rx="24" fill="none" stroke="#202732" stroke-width="3"/>
-    ${dial(325, 275, 185, 260, 20, 2, (v) => v)}
-    ${dial(955, 275, 185, 8, 1, 2, (v) => v, 6.5)}
+    ${dial(325, 275, 185, 260, 20, 2, (v) => v, null, null, 'speed')}
+    ${dial(955, 275, 185, 8, 1, 2, (v) => v, 6.5, null, 'tacho')}
     <text x="325" y="446" text-anchor="middle" font-size="19" fill="#8d96a5">km/h</text>
     <text x="955" y="446" text-anchor="middle" font-size="17" fill="#8d96a5">x1000 min⁻¹</text>
     <text id="cl-speed" x="325" y="412" text-anchor="middle" font-size="64" font-weight="700" fill="#fff">0</text>
@@ -62,46 +62,67 @@
     </g>
   </svg>`;
 
-  /* painel de ponteiros do F30 (o 'digital' acima é o Live Cockpit Professional): dois mostradores físicos e a
-     tela central, mais baixa que no digital — colorida e grande no 'mid' (europeu), pequena e monocromática no
-     'analog' (F30 dos EUA sem o Live Cockpit). No pé dos mostradores ficam as barras segmentadas reais do carro:
-     a de combustível (a "barra de mpg") sob o conta-giros e a de temperatura do arrefecimento sob o velocímetro.
-     Com units=imperial o velocímetro vem em milhas (0–160 mph), como no carro americano. Os IDs são os do
-     digital; o que a variante não tem (número grande de velocidade, barras retangulares) é tratado no render. */
+  /* painel de ponteiros do F30 (o 'digital' acima é o Live Cockpit Professional), desenhado como o painel real
+     (foto BimmerToday do 320d pré-LCI): dois mostradores grandes com aro branco e números laranja — velocímetro
+     à esquerda (0–260 km/h, ou 0–160 mph no carro americano), conta-giros à direita com o '1/min x 1000' e o
+     READY/OFF; MINI-MOSTRADORES redondos por fora embaixo: combustível (0 · 1/2 · 1, com a bomba) à esquerda e
+     temperatura do arrefecimento (50/100/150, com o bulbo) à direita; a tela de informações BAIXA e larga entre
+     os mostradores (temperatura exterior e relógio) com a FITA DO ODOMETRO ainda mais abaixo; e a barra de
+     consumo segmentada (a "barra de mpg") no pé do conta-giros, com a marcha e o modo ao lado, como o 'S5
+     SPORT+' da foto. Com units=imperial o velocímetro vem em milhas. */
   function analogSvg(variant, units) {
     const lo = variant === 'analog', imp = units === 'imperial';
-    const screen = lo ? { x: 545, y: 150, w: 190, h: 178 } : { x: 470, y: 105, w: 340, h: 235 };
-    const scrFill = lo ? '#0a0d12' : '#06080d', scrStroke = lo ? '#242b36' : '#243244';
-    const txt = lo ? '#c8cfda' : '#eef2f7', sub = '#8d96a5';
-    const cx = screen.x + screen.w / 2;
-    const seg = (id, x0, n, wW, gap) => `<g id="${id}">` + Array.from({ length: n }, (_, i) => `<rect x="${x0 + i * (wW + gap)}" y="414" width="${wW}" height="9" rx="2" fill="#1b212b"/>`).join('') + '</g>';
+    const scrFill = '#0c1016', scrStroke = '#39404c', txt = lo ? '#e6ebf2' : '#f2f4f7', sub = '#8d96a5';
+    const or = '#ff6a2a';                                   // laranja dos números e das escalas
+    const ang = (t, a0, a1, v0, v1) => a0 + (a1 - a0) * (t - v0) / (v1 - v0);
+    const tickSvgs = (gx, ticks) => ticks.map((tk) => { const p = pol(gx, 330, 56, ang(tk[1], START, -START, 0, 100)); return '<text x="' + f1(p[0]) + '" y="' + f1(p[1] + 4) + '" text-anchor="middle" font-size="13" fill="' + or + '">' + tk[0] + '</text>'; }).join('');
+    const mini = (id, gx, ticks, red, icon) => `
+    <circle cx="${gx}" cy="330" r="66" fill="#05070b" stroke="#dfe5ec" stroke-width="4"/>
+    <path d="${arc(gx, 330, 42, START, -START)}" fill="none" stroke="#39404c" stroke-width="3"/>
+    ${red || ''}${tickSvgs(gx, ticks)}
+    ${icon}
+    <g class="needle" data-needle="${id}" data-pivot="${gx} 330"><polygon points="${f1(gx - 2.5)},342 ${f1(gx + 2.5)},342 ${f1(gx + 1)},290 ${f1(gx - 1)},290" fill="#ff5a1f"/></g>
+    <circle cx="${gx}" cy="330" r="6" fill="#11151c" stroke="#ff5a1f" stroke-width="2"/>`;
+    const fuelTicks = [['0', 0], ['1/2', 50], ['1', 100]];
+    const tempTicks = [['50', 8], ['100', 42], ['150', 92]];
+    const tempRed = `<path d="${arc(1172, 330, 42, ang(115, START, -START, 40, 160), -START)}" fill="none" stroke="#d6281c" stroke-width="4"/>`;
+    const fuelIcon = `<g transform="translate(99,300) scale(.42)" fill="none" stroke="${or}" stroke-width="6"><path d="M4 4h16v22H4zM20 10h5v11h-5M8 10h8"/></g>`;
+    const tempIcon = `<g transform="translate(1163,299) scale(.42)" fill="none" stroke="${or}" stroke-width="6"><path d="M6 4v14a6 6 0 1 0 6 6V4"/></g>`;
+    const segBar = `<g id="cl-mpg">` + Array.from({ length: 12 }, (_, i) => `<rect x="${832 + i * 9}" y="362" width="6" height="8" rx="2" fill="#1b212b"/>`).join('') + '</g>';
+    const screen = lo ? { x: 460, y: 255, w: 360, h: 135 } : { x: 455, y: 130, w: 370, h: 300 };
     return `<svg viewBox="0 0 1280 480" xmlns="${SVGNS}" role="img" aria-label="Instrument cluster" class="cl-svg">
     <rect width="1280" height="480" rx="26" fill="#05070b"/>
     <rect x="3" y="3" width="1274" height="474" rx="24" fill="none" stroke="#202732" stroke-width="3"/>
-    ${dial(325, 275, 185, imp ? 160 : 260, 20, 2, (v) => v)}
-    ${dial(955, 275, 185, 8, 1, 2, (v) => v, 6.5)}
-    <text id="cl-unit" x="325" y="446" text-anchor="middle" font-size="19" fill="#8d96a5">${imp ? 'mph' : 'km/h'}</text>
-    <text x="955" y="446" text-anchor="middle" font-size="17" fill="#8d96a5">x1000 min⁻¹</text>
+    <rect x="${screen.x}" y="${screen.y}" width="${screen.w}" height="${screen.h}" rx="8" fill="${scrFill}" stroke="${scrStroke}" stroke-width="2"/>
+    <rect x="545" y="404" width="190" height="38" rx="6" fill="${scrFill}"/>
+    <text x="595" y="420" text-anchor="middle" font-size="12" fill="${sub}">${imp ? 'mi' : 'km'}</text>
+    <text id="cl-odo" x="640" y="438" text-anchor="middle" font-size="${lo ? 17 : 19}" fill="${txt}"></text>
+    ${dial(360, 225, 168, imp ? 160 : 260, 20, 2, (v) => v, null, or, 'speed')}
+    <circle cx="360" cy="225" r="181" fill="none" stroke="#dfe5ec" stroke-width="5" opacity=".85"/>
+    ${dial(920, 225, 168, 8, 1, 2, (v) => v, 6.4, or, 'tacho')}
+    <circle cx="920" cy="225" r="181" fill="none" stroke="#dfe5ec" stroke-width="5" opacity=".85"/>
+    <text x="360" y="168" text-anchor="middle" font-size="16" fill="${or}">${imp ? 'mph' : 'km/h'}</text>
+    <text x="920" y="150" text-anchor="middle" font-size="14" fill="${or}">1/min x 1000</text>
+    <text x="872" y="258" text-anchor="middle" font-size="13" fill="#dfe5ec">READY</text>
+    <text x="872" y="278" text-anchor="middle" font-size="11" fill="#dfe5ec">OFF</text>
+    ${segBar}
+    <text id="cl-gear" x="${lo ? 975 : screen.x + screen.w / 2}" y="${lo ? 372 : 296}" text-anchor="middle" font-size="${lo ? 20 : 66}" font-weight="700" fill="#eef2f7">P</text>
+    <text id="cl-mode" x="${lo ? 975 : screen.x + screen.w / 2}" y="${lo ? 394 : 326}" text-anchor="middle" font-size="${lo ? 12 : 20}" fill="${or}"></text>
+    <text x="858" y="416" font-size="11" fill="#2aa8a0" transform="rotate(-16 858 416)">EfficientDynamics</text>
+    ${mini('fuel', 108, fuelTicks, '', fuelIcon)}
+    ${mini('temp', 1172, tempTicks, tempRed, tempIcon)}
     <g id="cl-tl" fill="#34c58a"><polygon id="cl-tl-l" points="60,52 28,76 60,100" class="tell"/><polygon id="cl-tl-r" points="1220,52 1252,76 1220,100" class="tell"/></g>
-    <rect x="${screen.x}" y="${screen.y}" width="${screen.w}" height="${screen.h}" rx="10" fill="${scrFill}" stroke="${scrStroke}" stroke-width="2"/>
     <g id="cl-pills"></g>
-    <text id="cl-clock" x="${cx}" y="${screen.y + 40}" text-anchor="middle" font-size="${lo ? 26 : 36}" font-weight="600" fill="${txt}">--:--</text>
-    <text id="cl-out" x="${cx}" y="${screen.y + 62}" text-anchor="middle" font-size="${lo ? 16 : 20}" fill="${sub}">--</text>
-    <text id="cl-gear" x="${cx}" y="${screen.y + (lo ? 108 : 140)}" text-anchor="middle" font-size="${lo ? 44 : 72}" font-weight="700" fill="${txt}">P</text>
-    <text id="cl-mode" x="${cx}" y="${screen.y + (lo ? 132 : 168)}" text-anchor="middle" font-size="${lo ? 14 : 18}" fill="#ff8a4d"></text>
-    ${seg('cl-temp', 248, 8, 12, 5)}
-    <g transform="translate(216,408) scale(.8)" fill="none" stroke="#5b9bd5" stroke-width="3"><path d="M6 4v14a6 6 0 1 0 6 6V4"/></g>
-    ${seg('cl-fuel', 880, 12, 10, 4)}
-    <g transform="translate(850,408) scale(.8)" fill="none" stroke="#c9a13b" stroke-width="3"><path d="M4 4h16v22H4zM20 10h5v11h-5M8 10h8"/></g>
-    <text id="cl-range" x="${cx}" y="${screen.y + (lo ? 152 : 200)}" text-anchor="middle" font-size="${lo ? 15 : 20}" fill="${txt}"></text>
-    <text id="cl-odo" x="${cx}" y="${screen.y + (lo ? 170 : 226)}" text-anchor="middle" font-size="${lo ? 15 : 20}" fill="${sub}"></text>
+    <text id="cl-clock" x="640" y="${lo ? 330 : 172}" text-anchor="middle" font-size="${lo ? 24 : 34}" font-weight="600" fill="${txt}">--:--</text>
+    <text id="cl-out" x="640" y="${lo ? 300 : 204}" text-anchor="middle" font-size="${lo ? 24 : 26}" fill="${txt}">--</text>
+    <text id="cl-range" x="640" y="${lo ? 358 : 356}" text-anchor="middle" font-size="${lo ? 14 : 20}" fill="${txt}"></text>
     <g id="cl-nav" style="display:none">
-      <text id="cl-nav-src" x="${cx}" y="${screen.y + (lo ? 24 : 26)}" text-anchor="middle" font-size="14" fill="#7fd0ff"></text>
-      <g id="cl-nav-arrow" transform="translate(${cx - 70} ${screen.y + (lo ? 92 : 112)}) scale(${lo ? 0.4 : 0.5})" style="color:${txt}"></g>
-      <text id="cl-nav-dist" x="${cx + 30}" y="${screen.y + (lo ? 100 : 120)}" text-anchor="middle" font-size="${lo ? 32 : 40}" font-weight="700" fill="${txt}"></text>
-      <text id="cl-nav-street" x="${cx}" y="${screen.y + (lo ? 136 : 172)}" text-anchor="middle" font-size="${lo ? 16 : 20}" fill="${txt}"></text>
-      <text id="cl-nav-dest" x="${cx}" y="${screen.y + (lo ? 154 : 198)}" text-anchor="middle" font-size="${lo ? 14 : 15}" fill="${sub}"></text>
-      <text id="cl-nav-eta" x="${cx}" y="${screen.y + (lo ? 170 : 222)}" text-anchor="middle" font-size="${lo ? 14 : 15}" fill="${sub}"></text>
+      <text id="cl-nav-src" x="640" y="${lo ? 273 : 160}" text-anchor="middle" font-size="13" fill="#7fd0ff"></text>
+      <g id="cl-nav-arrow" transform="translate(570 ${lo ? 318 : 250}) scale(${lo ? 0.4 : 0.5})" style="color:${txt}"></g>
+      <text id="cl-nav-dist" x="670" y="${lo ? 326 : 258}" text-anchor="middle" font-size="${lo ? 26 : 40}" font-weight="700" fill="${txt}"></text>
+      <text id="cl-nav-street" x="640" y="${lo ? 352 : 310}" text-anchor="middle" font-size="${lo ? 14 : 20}" fill="${txt}"></text>
+      <text id="cl-nav-dest" x="640" y="${lo ? 368 : 336}" text-anchor="middle" font-size="13" fill="${sub}"></text>
+      <text id="cl-nav-eta" x="640" y="${lo ? 382 : 360}" text-anchor="middle" font-size="13" fill="${sub}"></text>
     </g>
   </svg>`;
   }
@@ -154,7 +175,7 @@
       const $ = (id) => box.querySelector('#' + id);
       const needles = {};
       box.querySelectorAll('[data-needle]').forEach((g) => { needles[g.dataset.needle] = g; });
-      const setNeedle = (cx, deg) => { const g = needles[cx]; if (g) g.setAttribute('transform', ['rotate(', f1(deg), ' ', cx, ' 275)'].join('')); };
+      const setNeedle = (key, deg) => { const g = needles[key]; if (!g) return; const p = (g.dataset.pivot || (g.dataset.needle + ' 275')).split(' '); g.setAttribute('transform', ['rotate(', f1(deg), ' ', p[0], ' ', p[1], ')'].join('')); };
 
       function drawPills(ws) {
         const key = ws.map((w) => w.id).join(',');
@@ -163,9 +184,9 @@
         const g = $('cl-pills'); g.textContent = '';
         const an = variant !== 'digital';
         ws.slice(0, 8).forEach((w, i) => {
-          const [label, lvl] = WARN[w.id] || [w.id, w.level], x = an ? 500 + (i % 2) * 150 : 340 + (i % 4) * 150, y = (an ? 90 : 12) + (an ? Math.floor(i / 2) : Math.floor(i / 4)) * (an ? 32 : 36), wW = an ? 140 : 140;
+          const [label, lvl] = WARN[w.id] || [w.id, w.level], an2 = an && variant === 'analog', x = an ? (an2 ? 480 : 465) + (i % 2) * (an2 ? 160 : 178) : 340 + (i % 4) * 150, y = (an ? (an2 ? 262 : 150) : 12) + (an ? Math.floor(i / 2) : Math.floor(i / 4)) * (an ? 30 : 36), wW = an ? (an2 ? 150 : 170) : 140;
           const r = document.createElementNS(SVGNS, 'rect'); r.setAttribute('x', x); r.setAttribute('y', y); r.setAttribute('width', wW); r.setAttribute('height', 28); r.setAttribute('rx', 8); r.setAttribute('fill', PILL_FILL[lvl] || PILL_FILL.info);
-          const t = document.createElementNS(SVGNS, 'text'); t.setAttribute('x', x + 70); t.setAttribute('y', y + 20); t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', 16); t.setAttribute('font-weight', 600); t.setAttribute('fill', '#fff');
+          const t = document.createElementNS(SVGNS, 'text'); t.setAttribute('x', x + wW / 2); t.setAttribute('y', y + 20); t.setAttribute('text-anchor', 'middle'); t.setAttribute('font-size', 16); t.setAttribute('font-weight', 600); t.setAttribute('fill', '#fff');
           t.textContent = IDE.t(label); g.appendChild(r); g.appendChild(t);
         });
       }
@@ -181,24 +202,25 @@
           pillKey = '\0'; last = d; return render(d);
         }
         const imp = analog && units === 'imperial', spdD = imp ? spd * 0.621371 : spd, spdMax = imp ? 160 : 260;
-        setNeedle(325, START + SWEEP * Math.min(spdD, spdMax) / spdMax); setNeedle(955, START + SWEEP * Math.min(rpm / 1000, 8) / 8);
+        setNeedle('speed', START + SWEEP * Math.min(spdD, spdMax) / spdMax); setNeedle('tacho', START + SWEEP * Math.min(rpm / 1000, 8) / 8);
         const spEl = $('cl-speed'); if (spEl) spEl.textContent = Math.round(spd);   // só o painel digital tem o número grande
         const gear = GEAR[Math.round(v.gear_position || 0)] || '-', mode = IDE.t(MODE[Math.round(v.driving_mode || 0)] || '');
         $('cl-gear').textContent = gear; $('cl-mode').textContent = mode;
         $('cl-gear').setAttribute('fill', gear === 'R' ? '#ff6b5e' : '#fff');
         const t = new Date(); $('cl-clock').textContent = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
         $('cl-out').textContent = IDE.fmtNum(units === 'imperial' ? (v.outside_temp || 0) * 9 / 5 + 32 : (v.outside_temp || 0), 0) + ' °' + (units === 'imperial' ? 'F' : 'C');
-        const fp = Math.max(0, Math.min(100, d.fuel_pct || 0)), ct = Math.max(40, Math.min(130, v.coolant_temp || 0));
-        const fEl = $('cl-fuel'), tEl = $('cl-temp');
-        if (fEl.getAttribute('width') != null) {    // digital: barras de combustível e temperatura
+        const fp = Math.max(0, Math.min(100, d.fuel_pct || 0)), ct = Math.max(40, Math.min(160, v.coolant_temp || 0));
+        if ($('cl-fuel')) {                          // digital: barras retangulares de combustível e temperatura
+          const fEl = $('cl-fuel'), tEl = $('cl-temp');
           fEl.setAttribute('width', 160 * fp / 100); fEl.setAttribute('fill', fp < 12 ? '#e5502f' : '#f2b84b');
-          tEl.setAttribute('width', 160 * (ct - 40) / 90); tEl.setAttribute('fill', ct >= 115 ? '#e5502f' : '#4aa8ff');
-        } else {                                    // ponteiros: barras segmentadas no pé dos mostradores, como no F30 (combustível sob o conta-giros, temperatura sob o velocímetro)
-          const fSeg = box.querySelectorAll('#cl-fuel rect'), tSeg = box.querySelectorAll('#cl-temp rect');
-          const fLit = Math.round(fp / 100 * fSeg.length), tLit = Math.round((ct - 40) / 90 * tSeg.length);
-          fSeg.forEach((s, i) => s.setAttribute('fill', i < fLit ? (fp < 12 ? '#e5502f' : '#c9a13b') : '#1b212b'));
-          tSeg.forEach((s, i) => s.setAttribute('fill', i < tLit ? (ct >= 115 ? '#e5502f' : '#5b9bd5') : '#1b212b'));
-          const uEl = $('cl-unit'); if (uEl) uEl.textContent = speedLabel(units);
+          tEl.setAttribute('width', 160 * (ct - 40) / 120); tEl.setAttribute('fill', ct >= 115 ? '#e5502f' : '#4aa8ff');
+        } else {                                    // ponteiros: ponteiros dos mini-mostradores + a barra de consumo no pé do conta-giros (a "barra de mpg")
+          setNeedle('fuel', START + SWEEP * fp / 100);
+          setNeedle('temp', START + SWEEP * (ct - 40) / 120);
+          const cons = Math.max(0, v.fuel_consumption || 0);   // l/100 km; nos EUA a barra enche com a eficiência (mpg), como no carro
+          const frac = units === 'imperial' ? Math.min(1, (cons > 0.5 ? 235 / cons : 60) / 60) : Math.min(1, cons / 20);
+          const segs = box.querySelectorAll('#cl-mpg rect'), lit = Math.round(frac * segs.length);
+          segs.forEach((s, i) => s.setAttribute('fill', i < lit ? (frac > 0.8 ? '#e5502f' : '#ff7a33') : '#1b212b'));
         }
         $('cl-range').textContent = dist((d.range_km || 0) * 1000, units);
         $('cl-odo').textContent = IDE.fmtNum(units === 'imperial' ? (v.odometer || 0) * 0.621371 : (v.odometer || 0), 0) + (units === 'imperial' ? ' mi' : ' km');
