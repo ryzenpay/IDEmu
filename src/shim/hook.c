@@ -125,6 +125,10 @@ void input_pump(void){ u32 *p,*rep; u32 n;
   int wake=0;
   for(u32 i=0;i<n/16;i++){ u32 *e=ev+i*4;
     if(e[0]==42){ pad2_st=e[1]; pad2_xy=e[2]; continue; }
+#ifdef CRASHHK  /* diagnóstico (só no build -DCRASHHK): escreve/lê u32 na memória do HMI (o "poke" do shell, sem /dev/mem no guest); nunca no shim de produção */
+    if(e[0]==60){ if(!(e[1]&3)&&e[1]>0x1000&&e[1]<0xf0000000){ *(u32*)e[1]=e[2]; br_logx("poke",e[1],e[2],0); } continue; }
+    if(e[0]==61){ if(!(e[1]&3)&&e[1]>0x1000&&e[1]<0xf0000000) br_logx("peek",e[1],*(u32*)e[1],0); continue; }
+#endif
     if(e[0]==40||e[0]==41){ touch_send(e[1],e[2]&0xffff,e[2]>>16,e[3]==0xffff?0:e[3],e[0]==41?3:1); continue; }   /* toque: direto da thread de entrada (a entrega é assíncrona) e sem o evento de controlador que "acordaria" o laço: ele faria o HMI achar que o iDrive tomou a entrada */
     if(e[0]==2){ push_ctrl(e[1],0,(int)e[2]); continue; }   /* rotary: key=13 right / 14 left, val=detents */
     if(e[0]==30){ if(HA(REDIR_PTR)&&HA(REDIR_NOTIFY)){ void *rd=*(void**)HA(REDIR_PTR); if(rd) ((void(*)(void*,u32))HA(REDIR_NOTIFY))(rd,e[1]); } continue; }   /* imagem nova do mapa: o que o sinal do LayerManager faria (CHmiSurfaceRedirection::notifyUpdate) */
