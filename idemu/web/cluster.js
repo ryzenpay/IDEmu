@@ -154,8 +154,8 @@
   const speedLabel = (units) => (units === 'imperial' ? 'mph' : 'km/h');
 
   IDE.tabDefs.cluster = {
-    mount(host) {
-      let stop = null, pillKey = '', last = null, variant = 'digital', unitsCur = '';
+    mount(host, ctx) {
+      let stop = null, pillKey = '', last = null, variant = 'digital', unitsCur = '', errs = 0;
       const clWrap = h('div', { class: 'cl-wrap' }), hudWrap = h('div', { class: 'cl-wrap hud' });
       clWrap.innerHTML = DIGITAL_SVG; hudWrap.innerHTML = HUD_SVG;
       hudWrap.style.display = 'none';    // o HUD só aparece quando a codificação do carro diz que ele existe (render liga)
@@ -254,10 +254,14 @@
         huSum.textContent = IDE.t('Mensagens do HMI para o cluster e o HUD') + ' (' + hu.length + ')';
       }
       async function load() {
-        try { last = await api('/api/cluster'); note.classList.add('hidden'); render(last); }
-        catch (e) { note.classList.remove('hidden'); note.querySelector('.cl-note').textContent = IDE.t(e.message); }
+        if (ctx && ctx.booted && !ctx.booted()) {   // sem ambiente rodando: não martelar a API — o 409 a cada 200 ms alagava o console de erros de rede
+          note.classList.remove('hidden'); note.querySelector('.cl-note').textContent = IDE.t('Nenhum ambiente em execução: inicie um carro para ver o cluster e o HUD.');
+          return;
+        }
+        try { last = await api('/api/cluster'); errs = 0; note.classList.add('hidden'); render(last); }
+        catch (e) { errs = 1; note.classList.remove('hidden'); note.querySelector('.cl-note').textContent = IDE.t(e.message); }
       }
-      return { show() { stop = IDE.loop(load, 200); }, hide() { if (stop) stop(); stop = null; }, destroy() { if (stop) stop(); } };
+      return { show() { stop = IDE.loop(load, () => (ctx && ctx.booted && !ctx.booted() ? 1000 : errs ? 800 : 200)); }, hide() { if (stop) stop(); stop = null; }, destroy() { if (stop) stop(); } };
     },
   };
 })(window.IDE);
