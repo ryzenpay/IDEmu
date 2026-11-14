@@ -1,10 +1,15 @@
-"""plugins – extensões de host em pastas/ZIPs que caem na pasta `plugins/`.
+"""plugins – extensões que caem na pasta `plugins/` (um único tipo de plugin, duas metades).
 
 Cada plugin é um ZIP (`meutool.zip`) ou uma pasta (`meutool/`) com um `plugin.json` e cai na pasta
 `plugins/` do projeto; a GUI os reenumera ao iniciar e com `POST /api/plugins/rescan`. O ZIP é
 desempacotado em `plugins/.installed/<id>/` (re-desempacotado quando o arquivo muda) e os arquivos
 são servidos em `/plugins/<id>/<caminho>` — o JavaScript do plugin roda na página da IDEmu e pode
 registrar abas na tela Execução (`IDE.registerTab`) e chamar a API local como qualquer tela faz.
+
+Este módulo é a metade de NAVEGADOR/SERVIDOR. O mesmo pacote pode trazer também a metade de head
+unit — `pre.sh`/`boot.sh`/`lib/`/`data/`, que rodam dentro do iDrive virtual (idemu/guestplugins.py,
+docs/GUESTPLUGINS.md). Um pacote pode ter só uma metade, só a outra, ou as duas; quando a única
+coisa executável está no guest o item sai marcado `guest: true` na lista pública.
 
 plugin.json (tudo opcional; sem ele o id vem do nome do arquivo):
   {"id": "meutool", "name": "Minha ferramenta", "version": "1.0", "description": "...",
@@ -100,6 +105,10 @@ def _load_dir(pdir, manifest, err, pid, src):
           'styles': [s for s in styles if s not in bad and s not in missing], 'error': None, 'source': src}
     if bad: it['error'] = 'caminho rejeitado no plugin.json: %s' % bad[0]
     elif missing: it['error'] = 'falta %s no pacote' % missing[0]
+    else:
+        # só o nome já denuncia a metade de head unit: pre.sh/boot.sh rodam no iDrive, não no navegador
+        it['guest'] = any(os.path.isfile(os.path.join(pdir, s)) for s in ('pre.sh', 'boot.sh')) \
+            or os.path.isdir(os.path.join(pdir, 'lib'))
     return it
 
 
@@ -193,10 +202,11 @@ def scan(app=None, base=None, log=lambda m: None):
 
 
 def public():
-    """A lista como a GUI vê (sem caminhos de arquivo)."""
+    """A lista como a GUI vê (sem caminhos de arquivo). guest=true marca o que roda no head unit."""
     with _lock:
         return [{'id': i['id'], 'name': i['name'], 'version': i['version'], 'description': i['description'],
-                 'scripts': i['scripts'], 'styles': i['styles'], 'error': i['error']} for i in _state['items'] if not i['error']]
+                 'scripts': i['scripts'], 'styles': i['styles'], 'error': i['error'], 'guest': i.get('guest', False)}
+                for i in _state['items'] if not i['error']]
 
 
 def problems():

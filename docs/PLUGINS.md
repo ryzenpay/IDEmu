@@ -1,9 +1,15 @@
-# Host plugins (drop folder `plugins/`)
+# Plugins (drop folder `plugins/`)
 
-A **host plugin** extends the IDEmu machine itself — the web interface and the local server — as
-opposed to the guest-side QNX plugins in `idemu/plugins/`, which the builder injects into the
-emulated head unit (`builder.py`, `/plug/<Name>/*`). Host plugins add tabs to the Run screen, talk
-to the local API like any screen does, and may run python code inside the IDEmu server.
+A plugin is **one package in this folder** with up to two halves. The **browser/server half** —
+what this document covers — extends the IDEmu machine itself: tabs in the web interface, calls to
+the local API, optionally python code inside the server. The **in-car half** (`pre.sh`, `boot.sh`,
+`lib/`, `data/`) runs inside the emulated head unit, like a tweak installed over SSH into a real
+car; its full contract is [GUESTPLUGINS.md](GUESTPLUGINS.md). One package can be browser-only
+(the usual case), in-car-only (e.g. `can-log`), or both (e.g. `carplay-nav`, `sport-displays`).
+The loaders ignore whichever half a package does not have, and the same `plugin.json` describes both.
+
+(Firmware test fixtures in `idemu/plugins/` are unrelated internal material the builder bakes to
+`/plug/<Name>/*` for HMI development.)
 
 ## Installing
 

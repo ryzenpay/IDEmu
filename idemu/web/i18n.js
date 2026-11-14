@@ -1064,6 +1064,8 @@ window.IDE = window.IDE || {};
     ['Última posição do celular: {lat}, {lon} ({kmh} km/h)', 'Last phone position: {lat}, {lon} ({kmh} km/h)'],
     ['Autonomia {n} km', 'Range {n} km'],
     ['O HMI ainda não mandou nada ao cluster nem ao HUD.', 'The HMI has not sent anything to the cluster or the HUD yet.'],
+    ['Extensões', 'Extensions'],
+    ['Comando de navegação (extensão)', 'Navigation command (plugin)'],
     ['Nenhum ambiente em execução: inicie um carro para ver o cluster e o HUD.', 'No environment running: start a car to see the cluster and the HUD.'],
     ['há {s} s', '{s} s ago'],
     ['Mensagens do HMI para o cluster e o HUD', 'HMI messages to the cluster and the HUD'],

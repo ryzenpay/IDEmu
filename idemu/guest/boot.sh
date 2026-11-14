@@ -18,8 +18,19 @@ if [ -d /fs/shim/plug ]; then
   for d in /fs/shim/plug/*; do n=${d##*/}; mkdir -p /dev/shmem/plug/$n; cp $d/* /dev/shmem/plug/$n/; done
   ln -sP /dev/shmem/plug /opt/hmi/ID5/data/ro/Plugins
 fi
-export SYSNAME=nto TEMP=/dev/shmem HOME=/dev/shmem QNX_VERSION=qnx650 PROCESSOR=armle-v7 HOSTNAME=hu-omap BOOTMODE=TCFG MALLOC_MMAP_NOZERO=1
+export SYSNAME=nto TEMP=/dev/shmem TMPDIR=/dev/shmem HOME=/dev/shmem QNX_VERSION=qnx650 PROCESSOR=armle-v7 HOSTNAME=hu-omap BOOTMODE=TCFG MALLOC_MMAP_NOZERO=1
+# TMPDIR: o ksh grava heredoc em arquivo temporário; sem /tmp no guest, sem TMPDIR o heredoc morre
+# ("can't create temporary file /tmp/sh…NNNN") — e plugins usam heredoc o tempo todo
 . /fs/shim/env.sh
+# plugins de head unit (a metade guest de plugins/<id>/, docs/PLUGINS.md): /fs/shim/u/<id>/ vem do shim.img
+# (próximo boot) ou do push ao vivo (idemu/guestplugins); as libs em /fs/shim/ulib entram no caminho antes das do firmware
+# O estado gravável fica em /var/idemu/plug/<id> (o /dev/shmem do QNX não aceita subdiretório).
+IDEMU_UPLUGINS=""
+if [ -d /fs/shim/u ]; then
+  for d in /fs/shim/u/*; do n=${d##*/}; mkdir -p /var/idemu/plug/$n 2>/dev/null; IDEMU_UPLUGINS="$IDEMU_UPLUGINS $n"; done
+  export IDEMU_UPLUGINS IDEMU_UDATA=/var/idemu/plug LD_LIBRARY_PATH=/fs/shim/ulib:$LD_LIBRARY_PATH
+  for f in /fs/shim/u/*/pre.sh; do [ -f "$f" ] && . "$f"; done      # source: pode exportar variáveis para o HMI
+fi
 mkdir -p /dev/shmem/idemu 2>/dev/null
 pipe
 # canal de shell para o SSH do host (UART2 = /dev/ser4, como no hardware original)
@@ -33,6 +44,10 @@ waitfor /dev/ser6 10
 echo IDEMU_STAGE services
 ksh /fs/shim/rc.sh > /var/rc.log 2>&1
 echo IDEMU_STAGE hmi
+# boot.sh de cada extensão, na ordem do ls, logo antes do HMI (logs em /var/plug.log)
+if [ -n "$IDEMU_UPLUGINS" ]; then
+  for n in $IDEMU_UPLUGINS; do b=/fs/shim/u/$n/boot.sh; [ -f "$b" ] && { echo "IDEMU_PL $n boot" >> /var/plug.log; ksh "$b" >> /var/plug.log 2>&1; }; done
+fi
 [ "$HMI_DELAY" -gt 0 ] && sleep $HMI_DELAY
 cd /opt/hmi
 # IDEMU_HMI_ON (runtime, com 2 núcleos): "on -R 1" prende o HMI e suas threads no CPU0, como num núcleo só; os demais serviços usam o CPU1

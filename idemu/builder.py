@@ -360,6 +360,35 @@ def build_shim(env, os_istep, out, log=print):
             for f in sorted(os.listdir(pp)):
                 fp = os.path.join(pp, f)
                 t.add('/plug/%s/%s' % (pn, f), 0o100755 if f.endswith('.so') else 0o100644, fp, os.path.getsize(fp))
+    # plugins de head unit (plugins/<id>/, metade guest): empacotadas no shim; o boot.sh do guest roda
+    # pre.sh/boot.sh de cada uma (docs/PLUGINS.md + docs/GUESTPLUGINS.md). A metade de navegador do mesmo
+    # pacote (*.js, *.css, *.py, __pycache__) fica de fora: list_plugins() já filtra. O id é a pasta.
+    updir = os.path.join(os.path.dirname(HERE), 'plugins')
+    nplug = 0
+    if os.path.isdir(updir):
+        try:
+            from . import guestplugins as _gp
+        except ImportError:
+            import guestplugins as _gp
+        for pkg in _gp.list_plugins():
+            if pkg['error']:
+                log('plugins/%s: %s' % (pkg['name'], pkg['error']))
+                continue
+            t.mkdir('/u/%s' % pkg['id'], 0o40775)
+            for rel in pkg['files']:
+                fp = os.path.join(pkg['dir'], rel)
+                if rel.startswith('lib/'):
+                    gp, mode = '/ulib/' + os.path.basename(rel), 0o100755
+                elif rel.startswith('data/'):
+                    gp, mode = '/udata/%s/%s' % (pkg['id'], rel[5:]), 0o100644
+                else:
+                    gp, mode = '/u/%s/%s' % (pkg['id'], rel), (0o100755 if rel.endswith(('.sh', '.so')) else 0o100644)
+                    d = rel[:rel.rfind('/')] if '/' in rel else ''
+                    if d:
+                        t.mkdir('/u/%s/%s' % (pkg['id'], d), 0o40775)
+                t.add(gp, mode, fp, os.path.getsize(fp))
+            nplug += 1
+        if nplug: log('plugins: %d pacote(s) com metade de head unit no shim' % nplug)
     bs = open(os.path.join(HERE, 'guest', 'boot.sh'), 'rb').read()
     t.add('/boot.sh', 0o100755, bs, len(bs))
     ag = open(os.path.join(HERE, 'guest', 'agent.sh'), 'rb').read()

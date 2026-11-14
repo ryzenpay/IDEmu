@@ -2,7 +2,7 @@
 import os, re, subprocess, json, time, shutil, sys, threading, traceback, mimetypes, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-from . import catalog, builder, runtime, codegen, coding, coding7, coding8, stats, mgu, mgu7, phone, cluster, carplay, cic, vin, sysfiles, plugins
+from . import catalog, builder, runtime, codegen, coding, coding7, coding8, stats, mgu, mgu7, phone, cluster, carplay, cic, vin, sysfiles, plugins, guestplugins
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENVS = os.path.join(ROOT, 'environments')
@@ -253,6 +253,7 @@ class App:
         return self.load_env(nid)
     # ---- shim (iDrive 5/6) ----
     SHIM_INPUTS = (os.path.join('shim', 'lib'), os.path.join('guest', 'boot.sh'), os.path.join('guest', 'agent.sh'))
+    SHIM_INPUTS_OUT = ('../../plugins',)           # plugins com metade de head unit (idemu/guestplugins.py): entram no shim.img
     def _rebuild_shim(self, eid, env):
         tmp = os.path.join(self.env_dir(eid), 'work'); os.makedirs(tmp, exist_ok=True)
         try:
@@ -260,15 +261,23 @@ class App:
             builder.build_shim(env, os_dir, os.path.join(self.env_dir(eid), 'images', 'shim.img'))
         finally: shutil.rmtree(tmp, ignore_errors=True)
     def _shim_stale(self, eid):
-        """O shim.img do ambiente é mais velho que as bibliotecas do guest ou os scripts de boot (uma atualização do IDEmu): precisa ser refeito para valer."""
+        """O shim.img do ambiente é mais velho que as bibliotecas do guest, os scripts de boot ou os
+        plugins com metade de head unit (uma atualização do IDEmu): precisa ser refeito para valer."""
         try:
             p = os.path.join(self.env_dir(eid), 'images', 'shim.img'); built = os.path.getmtime(p)
             if os.path.getsize(p) > builder.SHIM_SECTORS * 512: return True      # shim de 32 MB (antes da mudança de endereço): refaz no tamanho novo
         except OSError: return False
         here = os.path.dirname(os.path.abspath(__file__))
-        for rel in self.SHIM_INPUTS:
-            p = os.path.join(here, rel)
-            for f in ([os.path.join(p, n) for n in os.listdir(p)] if os.path.isdir(p) else [p]):
+        roots = [os.path.join(here, rel) for rel in self.SHIM_INPUTS] + \
+                [os.path.normpath(os.path.join(here, rel)) for rel in self.SHIM_INPUTS_OUT]
+        for p in roots:
+            if os.path.isdir(p):
+                files = []
+                for dirpath, dirnames, filenames in os.walk(p):
+                    files += [os.path.join(dirpath, n) for n in filenames]
+            else:
+                files = [p]
+            for f in files:
                 try:
                     if os.path.getmtime(f) > built: return True
                 except OSError: pass
@@ -830,6 +839,30 @@ class H(BaseHTTPRequestHandler):
             rt = A.need_rt()
             if not rt.ssh: return {'port': rt.env.get('net', {}).get('ssh_port'), 'host': '127.0.0.1', 'user': '', 'key_path': '', 'command': '', 'state': 'down', 'note': 'SSH ainda não iniciado'}
             return rt.ssh.info()
+        if P[0] == 'guestplugins': return self.api_guestplugins(m, path, q, d)
+        raise ApiError('rota desconhecida: ' + path, 404)
+    def api_guestplugins(self, m, path, q, d):
+        """Plugins de head unit (a metade guest de plugins/, idemu/guestplugins.py): o que entra no próximo boot e o
+        que dá para empurrar para o guest em execução pelo console (shell.sock)."""
+        A = APP; P = path.split('/')
+        act = P[1] if len(P) > 1 else 'list'
+        if act == 'list':
+            rt = A.rt if (A.rt and A.rt.state in ('booting', 'running')) else None
+            out = {'plugins': [{k: p[k] for k in ('id', 'name', 'description', 'error', 'scripts', 'lib', 'files')} for p in guestplugins.list_plugins()]}
+            if rt:
+                try: out['guest'] = guestplugins.guest_list(rt)
+                except Exception as e: out['guest_error'] = str(e)
+            return out
+        rt = A.need_rt(); pid = d.get('id') or q.get('id') or ''
+        if isinstance(pid, list): pid = pid[0]
+        if act == 'install' and m == 'POST':
+            return guestplugins.install(rt, pid, run_scripts=bool(d.get('run')))
+        if act == 'uninstall' and m == 'POST':
+            return guestplugins.uninstall(rt, pid)
+        if act == 'run' and m == 'POST':
+            return guestplugins.run(rt, pid, d.get('script', 'boot.sh'))
+        if act == 'hmi_restart' and m == 'POST':
+            return guestplugins.hmi_restart(rt)
         raise ApiError('rota desconhecida: ' + path, 404)
     def api_vehicle(self, m, path, q, d):
         rt = APP.need_rt()

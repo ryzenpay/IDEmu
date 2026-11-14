@@ -54,15 +54,19 @@ recognizer of the HMI spellers (`idemu/hwr.py`) and enters the characters into C
 the plugin's buffer and the list on the video. The mirror watches every pad event (`Runtime.touchpad`), runs while the HMI's `CccsTouchControl`
 says CarPlay holds the pad and never while one of the HMI's spellers holds it — speller handwriting is untouched. `plugins/carplay-touch/README.md`.
 
-## Navigation to the cluster (plugin CarPlay Nav)
+## Navigation to the cluster (the `plugins/carplay-nav` plugin: in-car half + workshop tab)
 
 In the car the Kombi never sees CarPlay: the head unit turns the phone's guidance into the same cluster navigation content its own maps would
-produce. IDEmu does the same thing from the other side. The virtual cluster exposes a **guidance feed** (`NavFeed`, `idemu/cluster.py`, fed by
-`POST /api/cluster/nav`, expiring after 6 s without updates), and the host plugin **`plugins/carplay-nav`** is the phone-side provider: it plays
-the role of the iPhone's Maps. The plugin builds a maneuver list (from the virtual GPS route via `GET /api/gps/route`, or by hand), advances it
-at the car's speed and publishes the current instruction once per second; the cluster tab then shows the maneuver, the street and the destination
-in the center of the panel and the HUD follows it instead of the geometric turn. Any other tool can publish the same way — the feed does not care
-who guides. `plugins/carplay-nav/README.md`, `docs/API.md`.
+produce. IDEmu splits that honestly inside one plugin (docs/PLUGINS.md, docs/GUESTPLUGINS.md). **Inside the head unit**, the in-car half of
+`plugins/carplay-nav` plays the
+iPhone's Maps: `navd.sh` loads the route (`data/route.tsv`), advances it at the car's own speed (the CAN/GPS files of the data channel) and keeps
+the current instruction in `/var/idemu/plug/carplay-nav/guidance`; start/stop is the `nav_cmd` signal (frame `0x41F`, `/var/idemu/can/41F` — a
+signal defined in `idemu/data/can_signals.json`, so it only reaches the car after the server/environment restarts; until then the fallback control
+file `$IDEMU_UDATA/carplay-nav/cmd` does the same over SSH). It
+runs with no browser open and survives `slay HmiMain3D`. **On the workshop side**, the browser half of the same plugin edits the route, installs
+and starts the in-car scripts (guestplugins API + nav_cmd), mirrors the car's instruction read-only, and can forward it to the host-drawn cluster/HUD
+through the core `NavFeed` (`POST /api/cluster/nav`, expiring after 6 s without updates) — cluster rendering is a host seam, so that last hop is
+the one thing a guest plugin cannot do alone. `plugins/carplay-nav/README.md`, `docs/API.md`.
 
 ## API
 
