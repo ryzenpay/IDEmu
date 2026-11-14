@@ -256,15 +256,21 @@ static int hk_mapsurf(void *self,u32 surf,u32 w,u32 h,u8 *out){ if(!w||!h) retur
   u32 *m=(u32*)calloc(1,0x38); m[0]=8; m[1]=w; m[2]=h; m[3]=w*4; m[4]=getpid(); pthread_mutex_init(m+5,0); *(u32*)(out+8)=len; *(void**)(out+0xc)=img; *(void**)(out+0x10)=m;
   map_cur[0]=surf; map_cur[1]=w; map_cur[2]=h; br_logx("map: superficie criada",surf,w,h); return 1; }
 static void hk_unmapsurf(void *self,u32 surf,u8 *sh){ void *img=*(void**)(sh+0xc); u32 len=*(u32*)(sh+8); void *m=*(void**)(sh+0x10); if(img) munmap(img,len); if(m) free(m); *(u32*)(sh+8)=0; *(u32*)(sh+0xc)=0; *(u32*)(sh+0x10)=0; br_logx("map: superficie removida",surf,0,0); }
-/* diagnóstico: sem o gerenciador de falhas do carro, uma queda do HMI não deixava rastro; registra de onde veio e devolve ao tratamento padrão */
+/* diagnóstico: signal() entrega só o número; o siginfo/ucontext o kernel empilha acima do SP do handler.
+   varre a pilha e imprime candidados a codigo: HmiMain3D (0x100000..0x0b000000), libs (0x78000000..0x80000000),
+   seguidos de 4 linhas com os 16 u32 abaixo de cada candidato (uma janela do ucontext: pc costuma vir com lr/psr ao lado) */
 extern void (*signal(int,void(*)(int)))(int);
-static void crash_h(int sg,u32 *info,u32 *uc){ static int n; static void(*prev[32]); int k=sg&31; if(!prev[k]) prev[k]=signal(sg,(void(*)(int))crash_h); if(n++==0){ br_logx("CRASH sinal",(u32)sg,(u32)info,(u32)uc);
-    if((u32)info>0x1000&&(u32)info<0xf0000000){ br_logx("CRASH info",info[0],info[1],info[2]); br_logx("CRASH info2",info[3],info[4],info[5]); }
-    if((u32)uc>0x1000&&(u32)uc<0xf0000000){ for(int i=0;i<96;i+=4) { br_logx("CRASH ctx",i,uc[i],uc[i+1]); br_logx(" ",uc[i+2],uc[i+3],0); } }
-    hk_bt("crash"); } signal(sg,prev[k]?prev[k]:(void(*)(int))0); } /* devolve a disposicao anterior do HMI (ele mesmo trata e segue); so mata quando era SIG_DFL */
-void install_hooks(void){ static int done; if(__atomic_exchange_n(&done,1,__ATOMIC_ACQ_REL)) return;
-#ifdef CRASHHK   /* diagnóstico de quedas (-DCRASHHK): ligado, o iDrive 5 não termina de subir (sinal capturado no boot); desligado por padrão */
-  signal(11,(void(*)(int))crash_h); signal(10,(void(*)(int))crash_h); signal(4,(void(*)(int))crash_h); signal(8,(void(*)(int))crash_h);
+static void crash_h(int sg){ static int n; static void(*prev[32]); int k=sg&31; if(!prev[k]) prev[k]=signal(sg,(void(*)(int))crash_h);
+  if(n++<20){ u32 sp=(u32)&sg; br_logx("CRASH sig",(u32)sg,sp,0); int shown=0;
+    for(u32 i=0;i<640 && shown<6;i++){ u32 w=((u32*)sp)[i];
+      if(((w&~1u)>=0x100000&&(w&~1u)<0x0b000000)||((w&~1u)>=0x78000000&&(w&~1u)<0x80000000)){
+        br_logx("CAND",(w&~1u),i,0);
+        for(int j=-4;j<=4;j+=2){ int o=(int)i+j; if(o>=0) br_logx("W",((u32*)sp)[o],o,0); }
+        shown++; } }
+    hk_bt("crash"); }
+  signal(sg,prev[k]?prev[k]:(void(*)(int))0); } /* devolve a disposicao anterior do HMI (ele mesmo trata e segue); so mata quando era SIG_DFL */void install_hooks(void){ static int done; if(__atomic_exchange_n(&done,1,__ATOMIC_ACQ_REL)) return;
+#ifdef CRASHHK   /* diagnóstico de quedas (-DCRASHHK): só SIGSEGV (os outros sinais o HMI usa de propósito); desligado por padrão */
+  signal(11,(void(*)(int))crash_h);
 #endif
   ha_load();
   getpu=(void*(*)(void))hk_sym("libhmicom.so","_Z14getHmiProcUnitv");
