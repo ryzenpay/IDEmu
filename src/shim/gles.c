@@ -13,7 +13,12 @@ static eb_t *eb_find(u32 id,int create){
   for(i=0;i<512;i++) if(!ebs[i].id){ ebs[i].id=id; return &ebs[i]; }
   return 0;
 }
-static u32 tsize(u32 type){ switch(type){case 0x1400:case 0x1401:return 1;case 0x1402:case 0x1403:return 2;case 0x1404:case 0x1405:case 0x1406:return 4;default:return 4;} }
+static u32 tsize(u32 type){ switch(type){case 0x1400:case 0x1401:return 1;case 0x1402:case 0x1403:return 2;case 0x1404:case 0x1405:case 0x1406:return 4;
+  case 0x8D61:return 2;                        /* GL_HALF_FLOAT_OES — o tipo que o HMI id5 usa nas texturas de preview (tabela de enums ao lado de
+                                                  FLOAT_BIT_OES 0x8d62/FLOAT_BIAS_OES 0x8d63 no HmiMain3D). Com o default 4 o shim lia 8x os bytes
+                                                  do buffer (RGBA=16 B/px): SIGSEGV no wcopy + wedge silencioso (lock preso com a thread). */
+  case 0x8D62:case 0x8D63:return 4;            /* FLOAT_BIT/BIAS_OES: raros como tipo de textura; 4 é conservador */
+  default:return 4;} }
 static u32 pixbpp(u32 fmt,u32 type){
   u32 ch=4;
   switch(type){ case 0x8363:case 0x8033:case 0x8034:return 2; case 0x1403:case 0x1402: if(fmt==0x1902||fmt==0x84F9) return 2; break; case 0x1405: case 0x84FA: return 4; }
