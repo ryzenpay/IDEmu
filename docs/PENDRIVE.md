@@ -2,11 +2,12 @@
 
 Pedido: escolher uma pasta do Mac e a head unit enxergar um pen drive espetado. **Não está funcionando**: nenhuma das duas gerações emuladas tem o que um pen drive precisa. No iDrive 8 a cadeia do firmware foi montada até o `devicemanager` (seção abaixo); o HMI ainda não mostra o dispositivo. Abaixo, o que foi conferido.
 
-## iDrive 5 e 6 (QEMU `omap5-uevm`, QNX 6.5)
+## iDrive 5 e 6 (QEMU `omap5-uevm`, QNX 6.5) — atualizado 2026-11-16
 
-* A placa do QEMU não tem controlador USB host (`-device help` do `qemu-system-arm` só lista `usb-host` e `usb-hub`, e o `omap5-uevm.c` não modela o EHCI do OMAP5).
-* O guest só roda a lista mínima de serviços (`pidin`: `io-ipc`, `most`, `servicebroker`, `someip_sddaemon`, `watchdog5-omap`, `HmiMain3D`...). Não há `io-usb`, `devb-umass` nem o motor de mídia.
-* Mesmo com um disco montado em `/fs/usb0`, o HMI não o mostraria: as fontes de mídia (`CDevExternalUSBBase`, `CDevMediaPlayerAbstract`) vêm de serviços DSI do motor de mídia da head unit, que não faz parte dos SWFL que o IDEmu usa. O log do HMI mostra a fonte USB criada, mas sem câmera nem player (`ASSERTION FAILED: nullptr != m_pDevCamera at CDevExternalUSBBase.cpp:155`).
+* A placa do QEMU não tem controlador USB host (`omap5-uevm.c` não modela o EHCI/xHCI do OMAP5; os drivers `io-usb`+`omap5-xhci`/`hb-ehci-omap3` até existem no `/bin` do guest, mas não têm silício onde nascer). `devb-umass` também existe.
+* Sem controlador não há como o HMI ver um `umassX`, mas o **pen drive virtual já existe por outro caminho**: `devb-loopback` (que o firmware usa para o CD) transforma um arquivo em disco. O plugin `id5-media` (projeto idplugins) leva `data/stick.img` — um QNX4 com `MBR` + `/Music/*.mp3` feito com `idemu/qnxfs/mkdisk.py` — e no boot faz `devb-loopback loopback fd=/fs/shim/udata/id5-media/stick.img,prefix=stk` + `mount -t qnx4 -o ro /dev/stk0t77 /fs/usb0`. Os clientes de sistema de arquivos do disco real estão em `/lib` (`fs-udf.so`, `fs-exfat.so`, `fs-mac.so`, `fs-nt.so`, `fs-qnx4.so`; não há `fs-dos`: pen drive FAT/UDF de verdade não montaria de jeito nenhum nesta build).
+* O motor de mídia **está** nos SWFL (`repository/istep/opt/mm`: `NBTMediaMainApp`, `MediaPreStarter`, `PrepareMedia`, `io-media-cinemo` com codecs, `mcd`) e os três processos sobem na VM (`plugins/id5-media`; precisa de `LD_LIBRARY_PATH` com `/opt/sys/lib` e `/opt/share/lib`, senão `ldd:FATAL`). O `mcd.cfg` trata `/mnt/umass*` só como pendrive de atualização (regras `config.nfm`/FSC/UPD*.bin); música entra por `[/fs/usb*]`, `Start Rule = INSERTED` (qualquer montagem já vale).
+* O que ainda falta: as fontes de mídia do HMI (`CDevExternalUSBBase`, `CDevMediaPlayerAbstract`) são serviços DSI/SOME-IP do motor de mídia, e o handshake MME↔HMI não fecha na VM (o `MediaPreStarter` reclama do `/sysetpage` e o `someip_sddaemon` não faz descoberta de serviço; o app abre mas sem fonte nem áudio). O log do HMI mostra a fonte USB criada, mas sem câmera nem player (`ASSERTION FAILED: nullptr != m_pDevCamera at CDevExternalUSBBase.cpp:155`).
 
 ## iDrive 8 (QEMU `virt` aarch64)
 
@@ -36,4 +37,4 @@ Dois cuidados: com o NSM real a tela do HMI apaga por inatividade ("sem operaç�
 
 ## iDrive 5/6
 
-Sem equivalente sem emular o motor de mídia da head unit.
+O motor de mídia do firmware roda na VM e o pen drive virtual monta em `/fs/usb0` (seção acima); falta o HMI aceitar as fontes (handshake DSI/SOME-IP do MME) para a fonte USB e o áudio aparecerem.

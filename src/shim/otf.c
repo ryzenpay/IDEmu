@@ -16,8 +16,21 @@ void *_ZN15OTF_CppScopeUseD1Ev(void *t){ return t; }
 void *_ZN15OTF_CppScopeUseD2Ev(void *t){ return t; }
 typedef struct { u32 id; const char *name; u32 a,b; u16 c,d; u8 lvl; } scope_t;
 static int prefix(const char*s,const char*p){ while(*p) if(*s++!=*p++) return 0; return 1; }
+/* cada br_log é uma ida e volta sincrona pelo bridge (para a VM inteira); a id5+ dispara milhares de
+   asserts por boot (CGfxScript) e a mesma linha repete ~10x/s. Mesma linha em 15 s => suprimida, e o
+   total aparece no sufixo "(+N em 15s)" da proxima que passar. Competicao por tabela = diagnostico, benigna. */
+extern int clock_gettime(int,void*);
+typedef struct { u32 key, last, n; } thr_t;
+static thr_t thr[128];
+static u32 now_ms(void){ u32 ts[2]={0,0}; clock_gettime(2,ts); return ts[0]*1000u+ts[1]/1000000u; }
 static void emit(const char *lvl,scope_t *s,const char *msg){ char b[300]; const char*nm="?"; if((u32)s>0x1000&&s->name&&(u32)s->name>0x1000) nm=s->name;
-  if(lvl[0]=='T'&&(prefix(nm,"HmiBase_CHmiTimer")||prefix(nm,"A4A_")||prefix(nm,"CommonAPI_")||prefix(nm,"HmiBase_ProfTime")||prefix(nm,"CHmiResourceManager")||prefix(nm,"HmiPerformanceMonitor")||prefix(nm,"HmiPlugin_")||prefix(nm,"Hmi_Ines_textureCreate"))) return; snprintf(b,sizeof b,"%s[%s] %s",lvl,nm,msg?msg:"(null)"); br_log(b); }
+  if(lvl[0]=='T'&&(prefix(nm,"HmiBase_CHmiTimer")||prefix(nm,"A4A_")||prefix(nm,"CommonAPI_")||prefix(nm,"HmiBase_ProfTime")||prefix(nm,"CHmiResourceManager")||prefix(nm,"HmiPerformanceMonitor")||prefix(nm,"HmiPlugin_")||prefix(nm,"Hmi_Ines_textureCreate"))) return; snprintf(b,sizeof b,"%s[%s] %s",lvl,nm,msg?msg:"(null)");
+  u32 h=5381; const char*p; for(p=b;*p;p++) h=h*33+(u8)*p;
+  thr_t*e=&thr[h&127]; u32 t=now_ms(), sup=0;
+  if(e->key==h&&t-e->last<15000){ e->n++; return; }
+  if(e->key==h){ sup=e->n; }
+  e->key=h; e->last=t; e->n=0;
+  if(sup>1){ char c[340]; snprintf(c,sizeof c,"%s (+%u em 15s)",b,sup); br_log(c); } else br_log(b); }
 extern void install_hooks(void);
 int OTF_open(const char*a,const char*b,u32 c,u32 d){ br_log("OTF_open(fake)"); install_hooks(); return 1; }
 int OTF_traceV(scope_t *s,const char *f,va_list ap){ char t[256]; vsnprintf(t,sizeof t,f,ap); t[255]=0; emit("T",s,t); return 0; }
