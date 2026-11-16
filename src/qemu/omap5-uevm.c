@@ -208,6 +208,10 @@ static void glb_write(void *opaque, hwaddr off, uint64_t val, unsigned size)
 {
     GlBridge *g = opaque;
     uint32_t len = val, rl = 0;
+    if (off == 16) {
+        qemu_log("IDEMU_WD v=%08x\n", (uint32_t)val);
+        return;
+    }
     if (off != 0) {
         return;
     }
@@ -253,6 +257,84 @@ static void glb_init(MemoryRegion *sysmem)
     memory_region_init_ram(&g->buf, NULL, "omap5.glb.buf", GLB_BUFSZ, &error_fatal);
     memory_region_add_subregion(sysmem, GLB_BUF, &g->buf);
     g->ptr = memory_region_get_ram_ptr(&g->buf);
+}
+
+/* ---- PC sampler (diagnóstico IDEmu): tocar o arquivo <dir de OMAP5_GLSOCK>/pcsamp faz este QEMU registrar
+   o PC/LR/SP/CPSR do vCPU ~a cada 3 ms de relógio do host no stderr, até <n> amostras (padrão 4000) ou o
+   arquivo sumir. async_run_on_cpu roda o callback no thread do vCPU em ponto seguro (fim de TB/interrupção),
+   então a amostra é o PC real do laço que ele executa; se o vCPU estiver preso no bridge, nada é amostrado
+   (o que também é diagnóstico). Uso: touch .../pcsamp; sleep 10; rm .../pcsamp; ler logs/qemu.log. */
+#include "qemu/timer.h"
+#include "system/runstate.h"
+static QEMUTimer *pcs_timer;
+static volatile int pcs_left, pcs_pending;
+static uint32_t pcs_seen[512];
+static int pcs_nseen;
+static char pcs_flag[PATH_MAX];
+void pcs_reset_seen(void){ pcs_nseen = 0; }
+
+static void pcs_take(CPUState *cs, run_on_cpu_data d)
+{
+    CPUARMState *env = &ARM_CPU(cs)->env;
+    uint32_t pc = (uint32_t)env->regs[15];
+    int k, dup = 0;
+    for (k = 0; k < pcs_nseen; k++) {
+        if (pcs_seen[k] == (pc & ~1u)) { dup = 1; break; }
+    }
+    if (!dup && pcs_nseen < 512) {
+        pcs_seen[pcs_nseen++] = pc & ~1u;
+    }
+    fprintf(stderr, "PCSA %08x %08x %08x %08x %d\n", pc, (uint32_t)env->regs[14],
+            (uint32_t)env->regs[13], (uint32_t)env->uncached_cpsr, dup);
+    if (!dup) {   /* primeira vez neste PC: despeja as instruções (lê VA pela MMU do vCPU, como faz o gdbstub) */
+        uint32_t w[3] = {0, 0, 0};
+        extern int cpu_memory_rw_debug(CPUState *cpu, vaddr addr, void *ptr, size_t len, bool is_write);
+        if (cpu_memory_rw_debug(cs, pc & ~3u, w, 12, false) != 0) {
+            w[0] = w[1] = w[2] = 0xffffffffu;
+        }
+        fprintf(stderr, "PCSB %08x %08x %08x @%08x\n", w[0], w[1], w[2], pc & ~3u);
+    }
+    fflush(stderr);
+    pcs_pending = 0;
+}
+
+static void pcs_tick(void *opaque)
+{
+    CPUState *cs = qemu_get_cpu(0);
+    if (cs && !pcs_pending && pcs_left <= 0 && !access(pcs_flag, F_OK)) {
+        pcs_left = 4000;   /* re-toque do arquivo re-arma a janela (cada janela <= 4000 amostras) */
+        extern void pcs_reset_seen(void); pcs_reset_seen();
+    }
+    if (cs && !pcs_pending && pcs_left > 0 && runstate_is_running() && !access(pcs_flag, F_OK)) {
+        pcs_left--;
+        pcs_pending = 1;
+        async_run_on_cpu(cs, pcs_take, RUN_ON_CPU_HOST_INT(0));
+    }
+    if (pcs_left > 0) {
+        timer_mod(pcs_timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 3);
+    }
+}
+
+static void pcs_init(void)
+{
+    const char *gs = getenv("OMAP5_GLSOCK");
+    char dir[PATH_MAX - 16];
+    if (gs && *gs) {
+        snprintf(dir, sizeof dir, "%s", gs);
+        char *slash = strrchr(dir, '/');
+        if (slash) {
+            *slash = 0;
+        } else {
+            snprintf(dir, sizeof dir, ".");
+        }
+    } else {
+        snprintf(dir, sizeof dir, "/tmp");
+    }
+    snprintf(pcs_flag, sizeof pcs_flag, "%s/pcsamp", dir);
+    pcs_left = 4000;
+    pcs_timer = timer_new_ms(QEMU_CLOCK_REALTIME, pcs_tick, NULL);
+    timer_mod(pcs_timer, qemu_clock_get_ms(QEMU_CLOCK_REALTIME) + 500);
+    fprintf(stderr, "OMAP5 pcsamp: touch %s para amostrar PCs do vCPU\n", pcs_flag);
 }
 
 static void omap5_uevm_init(MachineState *machine)
@@ -330,6 +412,7 @@ static void omap5_uevm_init(MachineState *machine)
     }
 
     glb_init(sysmem);
+    pcs_init();
 
     /* UART3 (console) 16550, regshift 2, SPI 106 */
     serial_mm_init(sysmem, 0x48020000, 2, pic[74], 48000000 / 16,

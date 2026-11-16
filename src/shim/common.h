@@ -16,6 +16,12 @@ void br_log(const char*s);
 void br_logx(const char*s,u32 a,u32 b,u32 c);
 extern volatile int br_lock_v;
 extern int usleep(unsigned);
+#ifdef CRASHHK
+extern void brk_set_hold(u32),brk_set_rel(void);
+#define LOCK()   do{ int _n=0; br_init(); while(__atomic_exchange_n(&br_lock_v,1,__ATOMIC_ACQUIRE)){ if(++_n>4) usleep(500); else sched_yield(); } brk_set_hold(0xFFFFFFFF); }while(0)
+#define UNLOCK() do{ brk_set_rel(); __atomic_store_n(&br_lock_v,0,__ATOMIC_RELEASE); }while(0)
+#else
 #define LOCK()   do{ int _n=0; br_init(); while(__atomic_exchange_n(&br_lock_v,1,__ATOMIC_ACQUIRE)){ if(++_n>4) usleep(500); else sched_yield(); } }while(0)
 #define UNLOCK() __atomic_store_n(&br_lock_v,0,__ATOMIC_RELEASE)
+#endif
 #define MAXOP_BYTES (6*1024*1024)

@@ -38,7 +38,8 @@ devc-sernuke -N -u4 -E -F -b921600 -c48000000/13 0x4806C000^2,105 > /dev/null 2>
 # enlace do V850 virtual (UART4 = /dev/ser6): usado pelo transporte io-ipc (ioipc-idemu.so)
 devc-sernuke -N -u6 -E -F -b921600 -c48000000/13 0x4806E000^2,102 > /dev/null 2>&1 &
 waitfor /dev/ser4 10
-( ksh -i < /dev/ser4 > /dev/ser4 2>&1 ) &
+# respawn: ^C/kill no ksh do console não pode derrubar o canal de shell do host
+( while :; do ksh -i < /dev/ser4 > /dev/ser4 2>&1; sleep 2; done ) &
 ksh /fs/shim/agent.sh > /dev/null 2>&1 &
 waitfor /dev/ser6 10
 echo IDEMU_STAGE services

@@ -128,6 +128,12 @@ void input_pump(void){ u32 *p,*rep; u32 n;
 #ifdef CRASHHK  /* diagnóstico (só no build -DCRASHHK): escreve/lê u32 na memória do HMI (o "poke" do shell, sem /dev/mem no guest); nunca no shim de produção */
     if(e[0]==60){ if(!(e[1]&3)&&e[1]>0x1000&&e[1]<0xf0000000){ *(u32*)e[1]=e[2]; br_logx("poke",e[1],e[2],0); } continue; }
     if(e[0]==61){ if(!(e[1]&3)&&e[1]>0x1000&&e[1]<0xf0000000) br_logx("peek",e[1],*(u32*)e[1],0); continue; }
+    /* 62: despeja a tabela de threads que passaram pela ponte (tid, SP, último op, contagem). Lê a própria pilha
+       da thread que pede (segura). Para ler a pilha de OUTRA thread, o host manda 61 (peek) com endereços da linha TID. */
+    if(e[0]==62){ extern u32 *brk_tab(u32*); u32 tn; u32 *t=brk_tab(&tn); br_logx("stkdump",tn,e[1],0);
+      for(u32 i=0;i<tn;i++) br_logx("TID",t[i*4],t[i*4+1],t[i*4+2]);
+      u32 sp=(u32)__builtin_frame_address(0); for(int i=0;i<40;i++){ u32 a=sp+i*4; if(!(a&0xfff)&&i) break; br_logx("BT",a,*(u32*)a,0); }
+      continue; }
 #endif
     if(e[0]==40||e[0]==41){ touch_send(e[1],e[2]&0xffff,e[2]>>16,e[3]==0xffff?0:e[3],e[0]==41?3:1); continue; }   /* toque: direto da thread de entrada (a entrega é assíncrona) e sem o evento de controlador que "acordaria" o laço: ele faria o HMI achar que o iDrive tomou a entrada */
     if(e[0]==2){ push_ctrl(e[1],0,(int)e[2]); continue; }   /* rotary: key=13 right / 14 left, val=detents */
@@ -233,7 +239,11 @@ static void display_on(void){ static int n; static u32 last; if(!HA(DISP_INIT)||
 static void (*alive_tramp)(void*);
 extern int usleep(unsigned);
 static void *input_thread(void *a){ for(;;){ usleep(15000); input_pump(); } return 0; }
-static void hk_alive(void *t){ static int n; if(getpu&&t==getpu()){ if(n++<3) br_logx("alive on main unit",(u32)t,0,0); main_pu=(u8*)t; auto_power_on(); display_on(); input_main((u8*)t); { static int started; static u32 tid[8]; if(!started){ started=1; pthread_create(tid,0,input_thread,0); } } } alive_tramp(t); }
+static void hk_alive(void *t){ static int n; if(getpu&&t==getpu()){ if(n++<3) br_logx("alive on main unit",(u32)t,0,0); main_pu=(u8*)t; auto_power_on(); display_on(); input_main((u8*)t); { static int started; static u32 tid[8]; if(!started){ started=1; pthread_create(tid,0,input_thread,0);
+#ifdef CRASHHK
+  { extern void brk_wd_start(void); brk_wd_start(); }
+#endif
+  } } } alive_tramp(t); }
 static void (*lua_err_tramp)(u8*);
 static void hk_luaerr(u8 *L){ u8 *top=*(u8**)(L+8); u32 v=*(u32*)(top-16); u32 tt=*(u32*)(top-8); static int n; if(n<400&&tt==4&&v){ n++; char b[250]; const char*m=(const char*)(v+16); u32 i=0; b[0]='L';b[1]='U';b[2]='A';b[3]=':';b[4]=' '; while(m[i]&&i<230){ b[5+i]=m[i]; i++; } b[5+i]=0; br_log(b); } lua_err_tramp(L); }
 /* IDEmu diag: log every distinct (variant id -> result) the HMI asks; optional overrides from /fs/shim/variants.bin (u32 LE: id | forced<<31) */
@@ -256,21 +266,40 @@ static int hk_mapsurf(void *self,u32 surf,u32 w,u32 h,u8 *out){ if(!w||!h) retur
   u32 *m=(u32*)calloc(1,0x38); m[0]=8; m[1]=w; m[2]=h; m[3]=w*4; m[4]=getpid(); pthread_mutex_init(m+5,0); *(u32*)(out+8)=len; *(void**)(out+0xc)=img; *(void**)(out+0x10)=m;
   map_cur[0]=surf; map_cur[1]=w; map_cur[2]=h; br_logx("map: superficie criada",surf,w,h); return 1; }
 static void hk_unmapsurf(void *self,u32 surf,u8 *sh){ void *img=*(void**)(sh+0xc); u32 len=*(u32*)(sh+8); void *m=*(void**)(sh+0x10); if(img) munmap(img,len); if(m) free(m); *(u32*)(sh+8)=0; *(u32*)(sh+0xc)=0; *(u32*)(sh+0x10)=0; br_logx("map: superficie removida",surf,0,0); }
-/* diagnóstico: signal() entrega só o número; o siginfo/ucontext o kernel empilha acima do SP do handler.
-   varre a pilha e imprime candidados a codigo: HmiMain3D (0x100000..0x0b000000), libs (0x78000000..0x80000000),
-   seguidos de 4 linhas com os 16 u32 abaixo de cada candidato (uma janela do ucontext: pc costuma vir com lr/psr ao lado) */
+/* diagnóstico: log SEM o lock (a thread pode morrer dentro da seção crítica da ponte — br_logx deadlocaria).
+   No QNX NTO o handler é chamado (via trampolim da libc) com r0=signo, r1=siginfo*, r2=_thread_private*
+   (bloco do kernel: d0..d15 @0, r0..r12 @128, sp @176, lr @180, pc @184, psr @188 — offsets por heurística
+   validada no despejo). O ponteiro pode viver no espaço do kernel: NUNCA desreferenciar direto;
+   o despejo S* é só da pilha (sempre mapeada) e o host decide o layout. */
+#ifdef CRASHHK
 extern void (*signal(int,void(*)(int)))(int);
-static void crash_h(int sg){ static int n; static void(*prev[32]); int k=sg&31; if(!prev[k]) prev[k]=signal(sg,(void(*)(int))crash_h);
-  if(n++<20){ u32 sp=(u32)&sg; br_logx("CRASH sig",(u32)sg,sp,0); int shown=0;
-    for(u32 i=0;i<640 && shown<6;i++){ u32 w=((u32*)sp)[i];
-      if(((w&~1u)>=0x100000&&(w&~1u)<0x0b000000)||((w&~1u)>=0x78000000&&(w&~1u)<0x80000000)){
-        br_logx("CAND",(w&~1u),i,0);
-        for(int j=-4;j<=4;j+=2){ int o=(int)i+j; if(o>=0) br_logx("W",((u32*)sp)[o],o,0); }
-        shown++; } }
-    hk_bt("crash"); }
-  signal(sg,prev[k]?prev[k]:(void(*)(int))0); } /* devolve a disposicao anterior do HMI (ele mesmo trata e segue); so mata quando era SIG_DFL */void install_hooks(void){ static int done; if(__atomic_exchange_n(&done,1,__ATOMIC_ACQ_REL)) return;
+extern void br_logx_nl(const char*,u32,u32,u32);
+static int cp_lk(u32 w){ return w>=0x100000&&w<0x80000000; }
+static int cpsr_lk(u32 w){ u32 m=w&0xff; return (m==0x10||m==0x1f)&&!(w>>16); }
+static void crash_h(int sg){ static int n; static void(*prev[32]); int k=sg&31; if(!prev[k]) prev[k]=(void(*)(int))(void*)signal(sg,(void(*)(int))(void*)crash_h);
+  u32 r1,r2; __asm__ volatile("mov %0, r1\n mov %1, r2":"=r"(r1),"=r"(r2));
+  if(n++<3){ u32 sp=(u32)&sg;
+    extern void brk_snap(void); extern u32 brk_snapw(u32),brk_snapn(void);
+    brk_snap();                                   /* FOTO ANTES de logar: br_logx_nl dá flush e zeraria a chamada em andamento */
+    u32 qn_=brk_snapn(), q=qn_>96?96:qn_;
+    br_logx_nl("CRASH sig",(u32)sg,sp,r2);
+    br_logx_nl("ARGS",r1,r2,(u32)sg);
+    br_logx_nl("QN",qn_,q,0);
+    for(u32 i=0;i+2<q;i+=3) br_logx_nl("QW",brk_snapw(i),brk_snapw(i+1),brk_snapw(i+2));
+    /* heurística do regset na pilha do handler (páginas próprias — nunca falte): trinca (pc,lr,psr) plausível */
+    u32 *up=(u32*)((sp&~0xfff)+0x1c); int patt=0;
+    for(int i=0;i<0x3E0/4-2 && patt<8;i++)
+      if(cpsr_lk(up[i+2])&&cp_lk(up[i])&&cp_lk(up[i+1])){ br_logx_nl("PATT",up[i+1],up[i],up[i+2]); patt++; }
+    /* despejo BRUTO: 64 palavras abaixo de &sg + página acima (contexto do kernel fica acima do frame) */
+    u32 *w0=(u32*)((sp-0x1c)&~3u);
+    for(int i=-64;i<0;i+=3) br_logx_nl("Sa",w0[i],w0[i+1],w0[i+2]);
+    for(int i=0;i<0x3E0;i+=3) br_logx_nl("Sb",up[i],up[i+1],up[i+2]);
+  }
+  signal(sg,prev[k]?prev[k]:(void(*)(int))0); } /* devolve a disposicao anterior do HMI (ele mesmo trata e segue); so mata quando era SIG_DFL */
+#endif
+void install_hooks(void){ static int done; if(__atomic_exchange_n(&done,1,__ATOMIC_ACQ_REL)) return;
 #ifdef CRASHHK   /* diagnóstico de quedas (-DCRASHHK): só SIGSEGV (os outros sinais o HMI usa de propósito); desligado por padrão */
-  signal(11,(void(*)(int))crash_h);
+  signal(11,(void(*)(int))(void*)crash_h);
 #endif
   ha_load();
   getpu=(void*(*)(void))hk_sym("libhmicom.so","_Z14getHmiProcUnitv");
