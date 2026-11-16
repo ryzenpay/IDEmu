@@ -349,27 +349,17 @@ def build_shim(env, os_istep, out, log=print):
         'export IDEMU_HMI_HEARTBEAT=%d' % int(os.environ.get('IDEMU_HMI_HEARTBEAT') or 40000),
     ]) + '\n'
     eb = envsh.encode(); t.add('/env.sh', 0o100755, eb, len(eb))
-    # plugins de teste: idemu/plugins/<Nome>/* vira /plug/<Nome>/* (boot.sh liga como .../data/ro/Plugins)
-    pdir = os.path.join(HERE, 'plugins')
-    if os.path.isdir(pdir):
-        t.mkdir('/plug', 0o40775)
-        for pn in sorted(os.listdir(pdir)):
-            pp = os.path.join(pdir, pn)
-            if not os.path.isdir(pp): continue
-            t.mkdir('/plug/' + pn, 0o40775)
-            for f in sorted(os.listdir(pp)):
-                fp = os.path.join(pp, f)
-                t.add('/plug/%s/%s' % (pn, f), 0o100755 if f.endswith('.so') else 0o100644, fp, os.path.getsize(fp))
-    # plugins de head unit (plugins/<id>/, metade guest): empacotadas no shim; o boot.sh do guest roda
-    # pre.sh/boot.sh de cada uma (docs/PLUGINS.md + docs/GUESTPLUGINS.md). A metade de navegador do mesmo
-    # pacote (*.js, *.css, *.py, __pycache__) fica de fora: list_plugins() já filtra. O id é a pasta.
-    updir = os.path.join(os.path.dirname(HERE), 'plugins')
+    # plugins de head unit (a pasta plugins/ do projeto idplugins, metade guest de cada pacote): empacotadas
+    # no shim; o boot.sh do guest roda pre.sh/boot.sh de cada uma (idplugins/docs/PLUGINS.md +
+    # GUESTPLUGINS.md). A metade de navegador do mesmo pacote (*.js, *.css, *.py, __pycache__) fica de
+    # fora: list_plugins() já filtra. O id é a pasta. public_dir() é None se o projeto não está instalado.
+    try:
+        from . import guestplugins as _gp
+    except ImportError:
+        import guestplugins as _gp
+    updir = _gp.public_dir()
     nplug = 0
-    if os.path.isdir(updir):
-        try:
-            from . import guestplugins as _gp
-        except ImportError:
-            import guestplugins as _gp
+    if updir and os.path.isdir(updir):
         for pkg in _gp.list_plugins():
             if pkg['error']:
                 log('plugins/%s: %s' % (pkg['name'], pkg['error']))

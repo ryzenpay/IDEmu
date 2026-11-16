@@ -12,12 +12,6 @@ ln -sP /fs/shim/lib/libGLESv2.so.1 /lib/libGLESv2.so.1
 ln -sP /fs/shim/lib/libilmClient.gpp.so.1 /opt/sys/lib/libilmClient.gpp.so.1
 ln -sP /fs/shim/lib/libBMWOTFapi.so.3 /opt/hmi/otf/libBMWOTFapi.so.3
 ln -sP /fs/shim/lib/ioipc-idemu.so /lib/ioipc-idemu.so
-# plugins de teste (idemu/plugins/): copiados para a RAM no começo do boot; o disco de shim é sobrescrito em execução
-if [ -d /fs/shim/plug ]; then
-  mkdir -p /dev/shmem/plug
-  for d in /fs/shim/plug/*; do n=${d##*/}; mkdir -p /dev/shmem/plug/$n; cp $d/* /dev/shmem/plug/$n/; done
-  ln -sP /dev/shmem/plug /opt/hmi/ID5/data/ro/Plugins
-fi
 export SYSNAME=nto TEMP=/dev/shmem TMPDIR=/dev/shmem HOME=/dev/shmem QNX_VERSION=qnx650 PROCESSOR=armle-v7 HOSTNAME=hu-omap BOOTMODE=TCFG MALLOC_MMAP_NOZERO=1
 # TMPDIR: o ksh grava heredoc em arquivo temporário; sem /tmp no guest, sem TMPDIR o heredoc morre
 # ("can't create temporary file /tmp/sh…NNNN") — e plugins usam heredoc o tempo todo

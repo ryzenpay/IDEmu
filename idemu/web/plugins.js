@@ -1,5 +1,5 @@
 'use strict';
-/* IDEmu – extensões de host (pasta plugins/, docs/PLUGINS.md).
+/* IDEmu – extensões de host (pasta plugins/ do projeto idplugins; docs em idplugins/docs/PLUGINS.md).
    Pede /api/plugins, injeta os .css/.js de cada pacote em ordem e oferece o ponto de entrada:
      IDE.registerTab({ id, label, icon, mount(host, ctx) })  → aba nova na tela Execução
    O script do plugin roda na página como qualquer outro: usa IDE.api/IDE.post e o que mais a GUI usa. */

@@ -11,8 +11,11 @@ import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_PLUGIN = os.path.join(ROOT, 'plugins', 'android-auto')
-_HAS = os.path.isdir(_PLUGIN)                     # plugins/ is a drop folder (gitignored)
+sys.path.insert(0, ROOT)
+from idemu import plugins as _pl                                            # noqa: E402  (shim: localiza o idplugins)
+
+_PLUGIN = os.path.join(_pl.DROP or '', 'android-auto')                      # plugins/ vive no projeto idplugins
+_HAS = bool(_pl.DROP) and os.path.isdir(_PLUGIN)
 if _HAS:
     sys.path.insert(0, _PLUGIN)
     from aa_core import aoap, frames, manifest, pb, session as sessionmod, sim, tls as tlsmod  # noqa: E402

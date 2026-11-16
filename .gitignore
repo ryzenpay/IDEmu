@@ -35,7 +35,3 @@ __pycache__/
 *.log
 *.new
 
-# ---- Extensões de host (pasta plugins/) -------------------------------------------------------------------------------
-# Pastas e ZIPs que a pessoa solta na pasta plugins/ e o pacote desempacotado; só o README é versionado.
-/plugins/*
-!/plugins/README.md

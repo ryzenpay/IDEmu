@@ -8,7 +8,7 @@ sys.path.insert(0, ROOT)
 
 from idemu import plugins, runtime                                                    # noqa: E402
 
-PKG = os.path.join(ROOT, 'plugins', 'carplay-touch')
+PKG = os.path.join(plugins.DROP or '', 'carplay-touch')                # plugins/ lives in the idplugins project
 CP_TC = b'\x03\x00\xff\x01\xbf\x00\x00\x00'    # CccsTouchControl gesture-only: CCarPlayActivity holds the pad
 SPELLER_TC = b'\x03\x0f\x02\x00\x00\x00\x00\x01'   # character classes: one of the HMI's spellers holds it
 

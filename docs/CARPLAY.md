@@ -46,19 +46,19 @@ A real iPhone cannot connect: it checks the accessory's Apple MFi authentication
 
 On the pad the HMI passes CarPlay's touches to the phone as `CarPlayTouchPadInput` (0xCD4) — but a phone uses them only if the head unit declared a
 touchpad to it (`[TouchPadInput]` in Connectivity's `carplay.ini`, which the stock configuration does not), so the touch controller often does
-nothing in CarPlay. The host plugin **`plugins/carplay-touch`** mirrors the same pad strokes to the input every iPhone honours: touches on the
+nothing in CarPlay. The host plugin **`idplugins/plugins/carplay-touch`** mirrors the same pad strokes to the input every iPhone honours: touches on the
 screen, injected host-side (`POST /api/input/click` → the HMI's `CarPlayTouchInput` 0xCD5). **Cursor** mode turns the pad into a trackpad: strokes
 move a cursor over the CarPlay video area (its rectangle read live from the renderer log), a tap is a click, a drag drags — with "Show keystrokes"
 on, each mirrored touch appears on the video as the 0xCD5 line the phone would receive. **Typing** mode reads the strokes as handwriting with the
 recognizer of the HMI spellers (`idemu/hwr.py`) and enters the characters into CarPlay's text fields; without a phone to tap a keyboard they join
 the plugin's buffer and the list on the video. The mirror watches every pad event (`Runtime.touchpad`), runs while the HMI's `CccsTouchControl`
-says CarPlay holds the pad and never while one of the HMI's spellers holds it — speller handwriting is untouched. `plugins/carplay-touch/README.md`.
+says CarPlay holds the pad and never while one of the HMI's spellers holds it — speller handwriting is untouched. `idplugins/plugins/carplay-touch/README.md`.
 
-## Navigation to the cluster (the `plugins/carplay-nav` plugin: in-car half + workshop tab)
+## Navigation to the cluster (the `idplugins/plugins/carplay-nav` plugin: in-car half + workshop tab)
 
 In the car the Kombi never sees CarPlay: the head unit turns the phone's guidance into the same cluster navigation content its own maps would
-produce. IDEmu splits that honestly inside one plugin (docs/PLUGINS.md, docs/GUESTPLUGINS.md). **Inside the head unit**, the in-car half of
-`plugins/carplay-nav` plays the
+produce. IDEmu splits that honestly inside one plugin (idplugins/docs/PLUGINS.md, idplugins/docs/GUESTPLUGINS.md). **Inside the head unit**, the in-car half of
+`idplugins/plugins/carplay-nav` plays the
 iPhone's Maps: `navd.sh` loads the route (`data/route.tsv`), advances it at the car's own speed (the CAN/GPS files of the data channel) and keeps
 the current instruction in `/var/idemu/plug/carplay-nav/guidance`; start/stop is the `nav_cmd` signal (frame `0x41F`, `/var/idemu/can/41F` — a
 signal defined in `idemu/data/can_signals.json`, so it only reaches the car after the server/environment restarts; until then the fallback control
@@ -66,7 +66,7 @@ file `$IDEMU_UDATA/carplay-nav/cmd` does the same over SSH). It
 runs with no browser open and survives `slay HmiMain3D`. **On the workshop side**, the browser half of the same plugin edits the route, installs
 and starts the in-car scripts (guestplugins API + nav_cmd), mirrors the car's instruction read-only, and can forward it to the host-drawn cluster/HUD
 through the core `NavFeed` (`POST /api/cluster/nav`, expiring after 6 s without updates) — cluster rendering is a host seam, so that last hop is
-the one thing a guest plugin cannot do alone. `plugins/carplay-nav/README.md`, `docs/API.md`.
+the one thing a guest plugin cannot do alone. `idplugins/plugins/carplay-nav/README.md`, `docs/API.md`.
 
 ## API
 

@@ -253,7 +253,8 @@ class App:
         return self.load_env(nid)
     # ---- shim (iDrive 5/6) ----
     SHIM_INPUTS = (os.path.join('shim', 'lib'), os.path.join('guest', 'boot.sh'), os.path.join('guest', 'agent.sh'))
-    SHIM_INPUTS_OUT = ('../../plugins',)           # plugins com metade de head unit (idemu/guestplugins.py): entram no shim.img
+    # plugins com metade de head unit entram no shim.img a partir da pasta plugins/ do projeto idplugins
+    # (guestplugins.public_dir(); idemu/guestplugins.py é só o shim — ver idemu/_plugins_home.py)
     def _rebuild_shim(self, eid, env):
         tmp = os.path.join(self.env_dir(eid), 'work'); os.makedirs(tmp, exist_ok=True)
         try:
@@ -268,8 +269,10 @@ class App:
             if os.path.getsize(p) > builder.SHIM_SECTORS * 512: return True      # shim de 32 MB (antes da mudança de endereço): refaz no tamanho novo
         except OSError: return False
         here = os.path.dirname(os.path.abspath(__file__))
-        roots = [os.path.join(here, rel) for rel in self.SHIM_INPUTS] + \
-                [os.path.normpath(os.path.join(here, rel)) for rel in self.SHIM_INPUTS_OUT]
+        roots = [os.path.join(here, rel) for rel in self.SHIM_INPUTS]
+        drop = guestplugins.public_dir()                # pasta plugins/ do idplugins (None se o projeto não está instalado)
+        if drop:
+            roots.append(drop)
         for p in roots:
             if os.path.isdir(p):
                 files = []
@@ -842,7 +845,7 @@ class H(BaseHTTPRequestHandler):
         if P[0] == 'guestplugins': return self.api_guestplugins(m, path, q, d)
         raise ApiError('rota desconhecida: ' + path, 404)
     def api_guestplugins(self, m, path, q, d):
-        """Plugins de head unit (a metade guest de plugins/, idemu/guestplugins.py): o que entra no próximo boot e o
+        """Plugins de head unit (a metade guest de plugins/ do idplugins; idemu/guestplugins.py é o shim): o que entra no próximo boot e o
         que dá para empurrar para o guest em execução pelo console (shell.sock)."""
         A = APP; P = path.split('/')
         act = P[1] if len(P) > 1 else 'list'
@@ -909,7 +912,7 @@ def serve(host='127.0.0.1', port=8765, open_browser=True):
     print('IDEmu: interface em', url, flush=True)
     get_stats()
     try:
-        plugins.scan(app=APP, log=lambda msg: print('plugin:', msg, flush=True))       # extensões da pasta plugins/ (docs/PLUGINS.md)
+        plugins.scan(app=APP, log=lambda msg: print('plugin:', msg, flush=True))       # extensões da pasta plugins/ do idplugins (idplugins/docs/PLUGINS.md)
     except Exception as e:
         print('plugins:', e, flush=True)                                                # uma extensão quebrada nunca impede a IDE de abrir
     import signal

@@ -73,8 +73,8 @@ The tarball comes from <https://download.qemu.org>; the scripts build only the p
 * **Tools**: SSH into the head unit, phone link over Wi-Fi, V850 firmware viewer, live statistics (CPU, RAM, GPU, FPS).
 * **CarPlay** (iDrive 5/6): a fake iPhone brings up the HMI's real CarPlay screens, with a video placeholder and a key code list (CarPlay tab, `docs/CARPLAY.md`);
   the **CarPlay Touch** host plugin brings the iDrive Touch Controller to those screens — pad strokes mirrored as a cursor and touches, or handwriting typed
-  (`plugins/carplay-touch`).
-* **Host plugins**: drop a zip (or folder) into `plugins/` and it appears in the web UI — new tabs on the Run screen, talking to the same local API; optional python hook (`docs/PLUGINS.md`).
+  (`idplugins/plugins/carplay-touch`).
+* **Host plugins**: the plugin system lives in its own project ([`../idplugins`](../idplugins)) — drop a zip (or folder) into its `plugins/` and it appears in the web UI: new tabs on the Run screen, talking to the same local API; optional python hook (`idplugins/docs/PLUGINS.md`).
 
 ## Other NBT Evo HMI builds
 
@@ -92,7 +92,7 @@ need a rebuild.
 | `idemu/` | Python package: build, runtime, web server and interface (`idemu/web`) |
 | `src/` | C sources: QEMU patches and boards, GL renderers, guest shims, V850 emulation |
 | `tools/` | Image builders, analysers and test helpers (`tools/mgu`, `tools/cic`, `tools/qemu`) |
-| `plugins/` | Drop folder for host extensions (zip or folder) — see [docs/PLUGINS.md](docs/PLUGINS.md) |
+| `../idplugins/` | **separate project**: plugin loaders + the `plugins/` drop folder; IDEmu re-exports them (`idemu/plugins.py`, `idemu/guestplugins.py` shims; `idemu/_plugins_home.py` finds it) |
 | `electron/` | Desktop wrapper |
 | `docs/` | Technical notes: [architecture](docs/ARQUITETURA.md), [API](docs/API.md), [other generations](docs/OUTRAS_GERACOES.md), [CIC](docs/CIC.md), [touch](docs/TOQUE.md), [touch controller](docs/TOUCH_CONTROLLER.md) (English), [V850](docs/V850.md), [cluster and HUD](docs/CLUSTER_HUD.md) (in Portuguese) |
 | `tests/` | `python3 -m unittest discover -s tests` |
