@@ -114,6 +114,9 @@ static void do_link(u32 prog){ GLuint P=H(4,prog); u32 vs=prog<MAXSH?progbin[pro
   /* a decompiled stage talks through its own varying names, so a half-decompiled pair is only safe if both agree */
   if(a&&b) a=patch_varyings(a,b);
   if(!a) a=gen_vs(V,F); if(!b) b=gen_fs(F);
+  if(getenv("GLHOST_GEN_DUMP")){ char dp[600]; FILE*df; snprintf(dp,600,"%s/gen-%08x.vert",CTL,V->hash); if((df=fopen(dp,"w"))){ fputs(a,df); fclose(df); } snprintf(dp,600,"%s/gen-%08x.frag",CTL,F->hash); if((df=fopen(dp,"w"))){ fputs(b,df); fclose(df); }
+    ShInfo*si[2]={vs?shinfo[vs]:0,fs?shinfo[fs]:0}; u32 sh[2]={vs,fs};
+    for(int z=0;z<2;z++){ ShInfo*q=si[z]; if(!q||!q->hash) continue; snprintf(dp,600,"%s/syms-%08x.txt",CTL,q->hash); if((df=fopen(dp,"w"))){ for(int w2=0;w2<q->n;w2++) fprintf(df,"%s cls=%d type=%d flag=%d arr=%d\n",q->s[w2].name,q->s[w2].cls,q->s[w2].type,q->s[w2].flag,q->s[w2].arr); fclose(df); } } }
   if(getenv("GLHOST_DUMPLINK")) fprintf(stderr,"[host] link stats decompiled vs=%d fs=%d of %d\n",ndec[0],ndec[1],ndec[2]);
   GLuint sa=comp(GL_VERTEX_SHADER,a,"VS"),sb=comp(GL_FRAGMENT_SHADER,b,"FS");
   glAttachShader(P,sa); glAttachShader(P,sb); if(fnd(V,"a_Position",4)) glBindAttribLocation(P,0,"a_Position"); glLinkProgram(P);
