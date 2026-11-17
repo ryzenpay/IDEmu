@@ -1,0 +1,10 @@
+#version 120
+uniform sampler2D tex0;
+uniform float opacity;
+varying vec2 uv;
+varying float fade;
+void main(){
+ vec4 col=texture2D(tex0,uv);
+ col.a*=opacity*fade;
+ gl_FragColor=col;
+}

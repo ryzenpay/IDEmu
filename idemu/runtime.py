@@ -202,6 +202,15 @@ class Runtime:
     def _launch(self, resume=False, record=False):
         """Sobe renderizador e QEMU; devolve os caminhos dos sockets seriais."""
         B = BIN + '/'; R = self.run + '/'
+        src = os.path.join(ROOT, 'tools', 'shaders', 'glsl')
+        dst = os.path.join(BIN, 'glsl')
+        os.makedirs(dst, exist_ok=True)
+        if os.path.isdir(src):
+            import shutil
+            for f in os.listdir(src):                       # overrides manuais canonicos em tools/shaders/glsl -> bin/glsl
+                s = os.path.join(src, f); d = os.path.join(dst, f)
+                if os.path.isfile(s) and (not os.path.isfile(d) or os.path.getmtime(s) > os.path.getmtime(d)):
+                    shutil.copy2(s, d)
         gls, ser, ser2, ser1, ser4 = R + 'gl.sock', R + 'ser.sock', R + 'ser2.sock', R + 'ser1.sock', R + 'ser4.sock'
         env = dict(os.environ, GLHOST_SOCK=gls, OMAP5_GLSOCK=gls, GLHOST_SHIDX=B + 'shader_index.txt',
                    GLHOST_GLSLDIR=B + 'glsl', GLHOST_MAPCACHE=mapsvc.CACHE, GLHOST_CTL=self.ctl, GLHOST_FRAME=self.frame_path,

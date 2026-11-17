@@ -6,6 +6,9 @@ shader corrigido à mão (bin/glsl/<hash>.frag) não seria achado. Os binários 
 do ambiente (mesmo formato de `*.shd` que o HMI carrega), então o índice é reprodutível a partir do próprio
 firmware do dono — nada da BMW entra no repositório.
 
+Os shaders corrigidos à mão têm casa canônica em `tools/shaders/glsl/` (versionados); o runtime copia para
+`bin/glsl/` (diretório de build, gitignored) ao subir o glhost — editar lá e commitar aqui.
+
 Uso:
     python3 tools/shaders/index.py <arvore do SWFL> [saida]
     python3 tools/shaders/index.py /tmp/opencode/hmi_swfl          # escreve bin/shader_index.txt
