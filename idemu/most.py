@@ -197,8 +197,8 @@ class MostBridge(object):
         sel = os.environ.get('IDEMU_MOST_DEVICES', 'core')
         devs = self.hmi_devices() if sel == 'all' else self.CORE_DEVICES + (self.NAV_DEVICES if os.environ.get('IDEMU_NAV_DEVICES', '1') != '0' else ()) + \
             (self.PHONE_DEVICES if os.environ.get('IDEMU_PHONE_DEVICES', '1') != '0' else ()) if sel == 'core' else ()
-        if os.environ.get('IDEMU_NO_CCS35', '0') != '0':
-            devs = tuple(d for d in devs if d not in ((0xE5, 3), (0xE5, 15)))   # sem o CDevCCS35up o rotor fica no caminho legado (o 3.5 engole os eventos sinteticos: alive nunca vem)
+        if os.environ.get('IDEMU_CCS35', '0') == '0':
+            devs = tuple(d for d in devs if d not in ((0xE5, 3), (0xE5, 15)))   # CDevCCS35up fica desligado por padrao: sem ele o rotor segue o caminho legado; IDEMU_CCS35=1 religa (escape hatch)
         self.register_devices(devs)
 
     # iDrive Touch Controller (FBlock 0xE5.01 CentralControlSystem): FktIDs and the HMI's CccsTouchControl, for handwriting (idemu/hwr.py)
