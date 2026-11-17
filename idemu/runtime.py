@@ -728,6 +728,7 @@ class DataChannel:
             if not self.stop_ev.is_set(): time.sleep(1.0)     # o QEMU pode ter fechado a sessão (parada/partida): tenta de novo
 
     def _pump(self):
+        s = self.sock                             # referência local: self.sock pode virar None (parada) no meio do laço
         glog = open(os.path.join(self.rt.logd, 'guest.log'), 'ab', 0)
         draw = open(os.path.join(self.rt.logd, 'guest-raw.log'), 'ab', 0) if os.environ.get('IDEMU_DATA_DEBUG') else None
         rbuf = b''
@@ -741,10 +742,10 @@ class DataChannel:
             elif ln.startswith(b'F '):
                 glog.write(ln[2:] + b'\n'); snap[0] = False
             glog.flush()
-        self.sock.settimeout(0.05)
+        s.settimeout(0.05)
         while not self.stop_ev.is_set():
             try:                                    # linhas "X ..." (shell) e "F ..." (arquivos) do agente → /api/guest/exec e logs/guest.log
-                rbuf += self.sock.recv(65536)
+                rbuf += s.recv(65536)
                 if draw: draw.write(rbuf[-2048:]); draw.flush()
                 rbuf = rbuf.replace(b'\r', b'\n')
                 while b'\n' in rbuf:
@@ -762,7 +763,7 @@ class DataChannel:
                 for k, v in self.dirty.items(): items[v] = k      # só o último de cada ID
                 self.dirty.clear()
             if items:
-                try: self.sock.sendall(('\n'.join(items.values()) + '\n').encode())
+                try: s.sendall(('\n'.join(items.values()) + '\n').encode())
                 except OSError: return
     def close(self):
         self.stop_ev.set()
