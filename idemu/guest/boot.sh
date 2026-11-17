@@ -48,6 +48,10 @@ cd /opt/hmi
 # IDEMU_HMI_ON (runtime, com 2 núcleos): "on -R 1" prende o HMI e suas threads no CPU0, como num núcleo só; os demais serviços usam o CPU1
 # IDEMU_NO_HMI=1 (depuração): não inicia o HMI — os serviços ficam sozinhos, sem o laço de reinício que satura a CPU
 if [ -z "$IDEMU_NO_HMI" ]; then
+# IDEMU_HMI_TAIL=1 (runtime): dois laços na UART1 do agente (/dev/ser5): um devolve /var/hmi.log ao host (linhas "F ..." → logs/guest.log);
+# outro responde comandos do host (linhas "X <cmd>" → saída em "X <rc>|cmd" + "X n|linha") — o shell do guest pela UART1 (api /guest/exec)
+# IDEMU_HMI_TAIL=1 (runtime): o shell do guest fica acessível ao host pela UART1 do agente (linhas "X <cmd>") — ver idemu/guest/agent.sh e /api/guest/exec
+:
 while : ; do $IDEMU_HMI_ON /opt/hmi/bin/HmiMain3D -c=DSI,MOSTSubSystem -ro=/opt/hmi/data/ro/ -rw=/var/opt/hmi/data/rw/ -sp=/var/opt/hmi/data/rw/ -vp=/opt/hmi/data/ro/ -cp=/opt/hmi/data/ro/ -iba1=/mnt/data/iba/swe1/ -iba2=/mnt/data/iba/anim-all/swe2/ -h=${IDEMU_HMI_HEARTBEAT:-10000} -z=4 -os=0 > /var/hmi.log 2>&1; s=$?; echo "HMI exit status $s at $(date)" >> /var/hmi.exit; echo "IDEMU_HMI_EXIT $s" ; sleep 3; done &
 fi
 echo IDEMU_STAGE up

@@ -336,7 +336,7 @@ class Runtime:
                ('mkdir -p $R/var/opt/hmi/data/rw $R/var/opt/sys $R/var/dump', 30, None, 28),
                ('ln -sP $R/bin /bin; ln -sP $R/lib /lib; ln -sP $R/etc /etc; ln -sP $R/opt /opt; ln -sP $R/var /var', 30, None, 29),
                ('ln -sP /opt/hmi/ID5/bin /opt/hmi/bin; ln -sP /opt/hmi/ID5/lib /opt/hmi/lib; ln -sP /opt/hmi/ID5/data /opt/hmi/data; ln -sP /fs/sdb0/ro /opt/hmi/ID5/data/ro', 30, None, 29),
-               ('HMI_DELAY=%s IDEMU_HMI_ON="%s" IDEMU_TCPDUMP=%s IDEMU_SB_VERBOSE=%s IDEMU_NO_HMI=%s ksh /fs/shim/boot.sh' % (os.environ.get('IDEMU_HMI_DELAY', '0'), os.environ.get('IDEMU_HMI_ON', 'on -R 1' if SMP > 1 else ''), os.environ.get('IDEMU_TCPDUMP', ''), os.environ.get('IDEMU_SB_VERBOSE', ''), os.environ.get('IDEMU_NO_HMI', '')), 300, 'Iniciando serviços do sistema', 30)]
+               ('HMI_DELAY=%s IDEMU_HMI_ON="%s" IDEMU_TCPDUMP=%s IDEMU_SB_VERBOSE=%s IDEMU_NO_HMI=%s IDEMU_HMI_TAIL=%s ksh /fs/shim/boot.sh' % (os.environ.get('IDEMU_HMI_DELAY', '0'), os.environ.get('IDEMU_HMI_ON', 'on -R 1' if SMP > 1 else ''), os.environ.get('IDEMU_TCPDUMP', ''), os.environ.get('IDEMU_SB_VERBOSE', ''), os.environ.get('IDEMU_NO_HMI', ''), os.environ.get('IDEMU_HMI_TAIL', '')), 300, 'Iniciando serviços do sistema', 30)]
         stage_pct = {'services': 35, 'hmi': 48, 'up': 55}
         hmi_t = [None]; hmi_seq = [0]; last_fs = [0]; last_chg = [time.time()]
         def scan(out):
@@ -689,6 +689,25 @@ class DataChannel:
     def __init__(self, uart_sock, can, gps, rt):
         self.uart_sock, self.can, self.gps, self.rt = uart_sock, can, gps, rt
         self.last = {}; self.dirty = {}; self.stop_ev = threading.Event(); self.lock = threading.Lock(); self.sock = None
+        self.xq = collections.deque(maxlen=400)     # respostas "X ..." (idemu/guest/agent.sh): saída de comandos do shell do guest
+    def guest_exec(self, cmd, timeout=25.0):
+        """Roda um comando no shell do guest pela UART1 e espera a resposta ('X <rc>|cmd' + 'X |linha'..., terminador 'X $')."""
+        if not self.sock: return None
+        with self.lock:
+            try: self.sock.sendall(('X ' + cmd + '\n').encode())
+            except OSError: return None
+        end = time.time() + timeout; out = []; done = False
+        self._xwait = True                            # pausa o fluxo CAN/GPS: as linhas 'C/G' interleavedas partiam as respostas X no `read` do agente
+        try:
+            while time.time() < end and not done:
+                time.sleep(0.1)
+                while self.xq:
+                    l = self.xq.popleft()
+                    if l == 'X $': done = True; break
+                    out.append(l)
+        finally:
+            time.sleep(0.15); self.xq.clear(); self._xwait = False
+        return out
     def start(self):
         if self.can: self.can.on_frame(self._frame)
         if self.gps: self.gps.on_nmea(self._nmea)
@@ -698,10 +717,43 @@ class DataChannel:
     def _nmea(self, line):
         with self.lock: self.dirty['G ' + line.strip()] = 'g' + line.strip()[:6]
     def _run(self):
-        try: self.sock = _unix_connect(self.uart_sock, 90)
-        except Exception: return
         while not self.stop_ev.is_set():
-            time.sleep(0.25)
+            try: self.sock = _unix_connect(self.uart_sock, 90)
+            except Exception: return
+            self._pump()
+            if self.sock:
+                try: self.sock.close()
+                except OSError: pass
+                self.sock = None
+            if not self.stop_ev.is_set(): time.sleep(1.0)     # o QEMU pode ter fechado a sessão (parada/partida): tenta de novo
+
+    def _pump(self):
+        glog = open(os.path.join(self.rt.logd, 'guest.log'), 'ab', 0)
+        draw = open(os.path.join(self.rt.logd, 'guest-raw.log'), 'ab', 0) if os.environ.get('IDEMU_DATA_DEBUG') else None
+        rbuf = b''
+        snap = [False]
+        def feed(ln):
+            if ln.startswith(b'X '):
+                self.xq.append(ln[2:].decode('latin1', 'replace')); return
+            if ln.startswith(b'F @@'):                 # marcador desnapshot: o guest.log vira a última cópia do arquivo vigiado
+                if not snap[0]: glog.truncate(0); snap[0] = True
+                glog.write(b'== ' + ln[2:] + b'\n')
+            elif ln.startswith(b'F '):
+                glog.write(ln[2:] + b'\n'); snap[0] = False
+            glog.flush()
+        self.sock.settimeout(0.05)
+        while not self.stop_ev.is_set():
+            try:                                    # linhas "X ..." (shell) e "F ..." (arquivos) do agente → /api/guest/exec e logs/guest.log
+                rbuf += self.sock.recv(65536)
+                if draw: draw.write(rbuf[-2048:]); draw.flush()
+                rbuf = rbuf.replace(b'\r', b'\n')
+                while b'\n' in rbuf:
+                    ln, rbuf = rbuf.split(b'\n', 1)
+                    if ln[:2] in (b'X ', b'F '): feed(ln)
+            except socket.timeout: pass
+            except OSError: glog.close(); return
+            time.sleep(0.2)
+            if getattr(self, '_xwait', False): continue      # resposta X em curso: não misturar tráfego CAN/GPS na mesma UART
             if self.rt.state != 'running': 
                 with self.lock: self.dirty.clear()
                 continue
@@ -712,4 +764,9 @@ class DataChannel:
             if items:
                 try: self.sock.sendall(('\n'.join(items.values()) + '\n').encode())
                 except OSError: return
-    def close(self): self.stop_ev.set()
+    def close(self):
+        self.stop_ev.set()
+        try:                                    # larga a UART: o QEMU só aceita um cliente por socket serial (senão o próximo boot fica mudo)
+            if self.sock: self.sock.close()
+        except OSError: pass
+        self.sock = None

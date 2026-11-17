@@ -843,6 +843,10 @@ class H(BaseHTTPRequestHandler):
             if not rt.ssh: return {'port': rt.env.get('net', {}).get('ssh_port'), 'host': '127.0.0.1', 'user': '', 'key_path': '', 'command': '', 'state': 'down', 'note': 'SSH ainda não iniciado'}
             return rt.ssh.info()
         if P[0] == 'guestplugins': return self.api_guestplugins(m, path, q, d)
+        if path == 'guest/exec' and m == 'POST':            # shell do guest pela UART1 do agente (idemu/guest/agent.sh, X)
+            dch = getattr(A.need_rt(), 'data', None)
+            if dch is None or not getattr(dch, 'sock', None): raise ApiError('canal de dados do guest desligado (IDEEMU_DATA_CHANNEL=1)', 409)
+            return {'out': dch.guest_exec(str(d.get('cmd', '')), float(d.get('timeout', 20)))}
         raise ApiError('rota desconhecida: ' + path, 404)
     def api_guestplugins(self, m, path, q, d):
         """Plugins de head unit (a metade guest de plugins/ do idplugins; idemu/guestplugins.py é o shim): o que entra no próximo boot e o

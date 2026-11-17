@@ -197,6 +197,8 @@ class MostBridge(object):
         sel = os.environ.get('IDEMU_MOST_DEVICES', 'core')
         devs = self.hmi_devices() if sel == 'all' else self.CORE_DEVICES + (self.NAV_DEVICES if os.environ.get('IDEMU_NAV_DEVICES', '1') != '0' else ()) + \
             (self.PHONE_DEVICES if os.environ.get('IDEMU_PHONE_DEVICES', '1') != '0' else ()) if sel == 'core' else ()
+        if os.environ.get('IDEMU_NO_CCS35', '0') != '0':
+            devs = tuple(d for d in devs if d not in ((0xE5, 3), (0xE5, 15)))   # sem o CDevCCS35up o rotor fica no caminho legado (o 3.5 engole os eventos sinteticos: alive nunca vem)
         self.register_devices(devs)
 
     # iDrive Touch Controller (FBlock 0xE5.01 CentralControlSystem): FktIDs and the HMI's CccsTouchControl, for handwriting (idemu/hwr.py)
@@ -275,6 +277,11 @@ class MostBridge(object):
             if (m.fblock, m.inst) == (0x24, 0x70) and m.func in self.CARPLAY_KEYS: self.carplay_forward(m)
         if m.func == 1 and m.op == MostMessage.OP_SET and len(m.data) == 5 and m.data[0] == 1:      # FktID 0x001 = Notification
             fkt = _st.unpack('>H', m.data[3:5])[0]
+            if not hasattr(self, '_subseen'): self._subseen = set()
+            sk1 = (m.fblock, m.inst, fkt)
+            if sk1 not in self._subseen:
+                self._subseen.add(sk1)
+                self.link.log('ponte25 SUB first: fblock=%02x inst=%d fkt=%03x listener=%03x' % (m.fblock, m.inst, fkt, _st.unpack('>H', m.data[1:3])[0]))
             self.subs.setdefault((m.fblock, m.inst), {})[fkt] = _st.unpack('>H', m.data[1:3])[0]     # fkt -> dispositivo ouvinte
             data = self.car.status_for(m.fblock, m.inst, fkt) if self.car is not None else None        # valor inicial da propriedade assinada
             # O HMI repete a assinatura ("notification retry") até receber um Status. Para as propriedades sem valor conhecido (~50, ~30 repetições/s no total), responder a cada repetição
@@ -301,8 +308,8 @@ class MostBridge(object):
             # as supported, so FFF FFF = all of them (docs/TOUCH_CONTROLLER.md, "Handwriting").
             self._ccs_fktids_sent = True
             self.send_most(MostMessage(m.src, m.dst, m.fblock, m.inst, 0, MostMessage.OP_STATUS, self.CCS_FKTIDS))
-        elif self.counts[k] <= 2:
-            self.link.log('ponte25 MOST <- %r' % (m,))
+        elif self.counts[k] <= 2 or self.counts[k] % 400 == 0:
+            self.link.log('ponte25 MOST <- %r n=%d' % (m, self.counts[k]))
 
     def send_most(self, m):
         # Status (inclusive o ack de Notification, função 1) só vale pelo valor mais recente: coalesce na fila de envio em vez de empilhar (ver _enqueue)
@@ -702,4 +709,9 @@ class MostCar(object):
                 if data is not None and self._sent.get((fb, inst, fkt)) != data:
                     self._sent[(fb, inst, fkt)] = data
                     n += self.bridge.publish(fb, fkt, data, inst)
+        for (fb, inst, fkt) in sorted(getattr(self, 'force', ())):   # propriedades que o HMI não assina mas precisa ouvir (empurrão direto; ex.: 05/cd0 do Sport displays)
+            data = self.status_for(fb, inst, fkt)
+            if data is not None and self._sent.get((fb, inst, fkt)) != data:
+                self._sent[(fb, inst, fkt)] = data
+                n += self.bridge.push(fb, fkt, data, inst)
         return n
