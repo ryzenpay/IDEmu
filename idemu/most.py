@@ -171,7 +171,7 @@ class MostBridge(object):
     # dispositivos do carro (FBlock, instância): Kombi (0xE0/0), Vehicle (0x05/0); `IDEMU_MOST_DEVICES=all` registra os 171 do HMI (satura a CPU do guest)
     # + blocos que o HMI assina e para os quais ha Status neutro validado (idemu/data/hmi_property_defaults.json); registrados no boot porque o HMI cria os CDevCar* na inicializacao
     CORE_DEVICES = ((0xE0, 0), (0x05, 0), (0xD1, 2), (0xD1, 4), (0xD1, 16), (0xD1, 17), (0xE5, 1), (0xE5, 3), (0xE5, 15), (0xC0, 3), (0x03, 0), (0x71, 0),
-                    (0x15, 2), (0x15, 3), (0x15, 12), (0xE1, 0))
+                    (0x15, 2), (0x15, 3), (0x15, 12), (0xE1, 0), (0x10, 1))     # (0x10,1) = ManMachineInterface/DXS: o HMI assina idiomas/unidades/CDXSCapability e retrya para sempre sem dono; respondemos os zeros de hmi_property_defaults.json so para limpar o ruido de retry (a hipotese de que CDevCarInstrumentsOfSport dependia daqui morreu: nunca assina cd0/cd1/cd3)
     # navegação (com NAVI_VARIANTE != keine_navi): Navigation (posição/GPS bruto) e NavigationInfo (posição+rumo+velocidade). IDEMU_NAV_DEVICES=0 não os registra no boot
     NAV_DEVICES = ((0x52, 0), (0xCD, 1), (0xCD, 3), (0xDA, 1))
     # telefone: Bluetooth (0x54/0), Telephone (0x50/1..4) e GeneralPhoneBook (0x51/0). No carro quem os serve é o processo Connectivity (/opt/conn, fora do disco do IDEmu).
@@ -655,6 +655,14 @@ class MostCar(object):
                 return _st.pack('>B', int(self._sig('gear_position')) & 0xFF)
             if fkt == 0x22c:                       # CReverseGear: u8 0/1
                 return _st.pack('>B', 1 if int(self._sig('gear_position')) == 1 else 0)
+            if fkt == 0xc7a:                       # CVehicleDynamicEngineScaling (Sport displays): 8 x u8. Runtime (shim SDUMP): com byte0=0 o
+                                                    # proxy marca os valores como invalidos e as agulhas nao andam; 0x64 em tudo = escala 100% (escala real por gauge e hipotese).
+                return bytes((0x64,) * 8)
+            if fkt == 0xc7b:                       # CVehicleDynamicEngine (Sport displays): u8 torque % | u8 potencia % | 6 x u8 (so os 2 primeiros decodificam;
+                                                    # >100 = invalido). Confirmado na tela: byte0 move a agulha de Nm, byte1 a de cv. Sem simulador, a demanda e o pedal.
+                tq = max(0, min(100, int(round(self._sig('accelerator_pos')))))
+                pw = max(0, min(100, int(round(tq * min(1.0, self._sig('engine_rpm') / 6500.0)))))
+                return bytes((tq, pw)) + b'\x00' * 6
             if fkt == 0xcc2:                       # CGearIndicator: u8
                 return _st.pack('>B', int(self._sig('gear_position')) & 0xFF)
             if fkt == 0x21f:                       # CTerminalStatus: 3 x u8 <= 15. O 1o byte e o estado do terminal que o CDevCarClamp converte (6,7 = desligado; 8,9 = KL R; 10,12 = KL 15; 13 = motor/KL 50;
