@@ -97,8 +97,11 @@ static GLuint comp(GLenum t,const char*src,const char*what){ GLuint s=glCreateSh
 static int ndec[3];
 static int alpha_hack=0; /* GL_ALPHA -> white+alpha was only needed by the name-based shaders; real code wants (0,0,0,a) */
 /* a varying the fragment stage reads but the vertex stage never wrote (optimised out by the original compiler) must still link */
-static char *patch_varyings(char *vs,const char *fs){ char *o=malloc(strlen(vs)+8192),decl[2048]="",init[4096]=""; const char *p=fs;
-  while((p=strstr(p,"varying "))){ if(p!=fs&&p[-1]!='\n'){ p+=8; continue; } const char*e=strchr(p,';'); if(!e) break; char ln[200]; int L=e-p; if(L>190) L=190; memcpy(ln,p,L); ln[L]=0; char ty[40],nm[120]; if(sscanf(ln,"varying %39s %119s",ty,nm)==2&&!strchr(nm,'[')){ char key[160]; snprintf(key,160,"varying %s %s;",ty,nm); if(!strstr(vs,key)){ strncat(decl,key,sizeof decl-strlen(decl)-2); strcat(decl,"\n"); char q[200]; snprintf(q,200,"%s=%s(0.0);\n",nm,ty); strncat(init,q,sizeof init-strlen(init)-1); } } p=e; }
+static char *patch_varyings(char *vs,const char *fs){ char *o=malloc(strlen(vs)+65536),decl[8192]="",init[16384]=""; const char *p=fs;
+  while((p=strstr(p,"varying "))){ if(p!=fs&&p[-1]!='\n'){ p+=8; continue; } const char*e=strchr(p,';'); if(!e) break; char ln[200]; int L=e-p; if(L>190) L=190; memcpy(ln,p,L); ln[L]=0; char ty[40],nm[120]; if(sscanf(ln,"varying %39s %119s",ty,nm)==2&&!strchr(nm,'[')){ char key[160]; snprintf(key,160,"varying %s %s;",ty,nm); if(!strstr(vs,key)){ /* guards: strcat sem limite + sizeof-strlen estourava (unsigned) com shaders de muitos varyings -> estourava a stack (SIGSEGV 2026-11-17) */
+      if(strlen(decl)+strlen(key)+2<=sizeof decl) strcat(decl,key);
+      char q[200]; snprintf(q,200,"%s=%s(0.0);\n",nm,ty);
+      if(strlen(init)+strlen(q)+1<=sizeof init) strcat(init,q); } } p=e; }
   const char*a=strstr(vs,"//VARYINGS"),*b=strstr(vs,"//ENDMAIN"); if(!a||!b||(!decl[0])){ strcpy(o,vs); free(vs); return o; }
   size_t n=0; memcpy(o,vs,a-vs); n=a-vs; strcpy(o+n,decl); n+=strlen(decl); memcpy(o+n,a,b-a); n+=b-a; strcpy(o+n,init); n+=strlen(init); strcpy(o+n,b); free(vs); return o; }
 static char *load_glsl(u32 h,const char*ext){ const char*d=getenv("GLHOST_GLSLDIR"); if(!d) d="../tools/shaders/glsl"; char p[600]; snprintf(p,600,"%s/%08x.%s",d,h,ext); FILE*f=fopen(p,"r"); if(!f) return 0; fseek(f,0,SEEK_END); long n=ftell(f); fseek(f,0,SEEK_SET); char*o=malloc(n+1); o[fread(o,1,n,f)]=0; fclose(f); return o; }
