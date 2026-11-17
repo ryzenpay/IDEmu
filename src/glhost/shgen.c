@@ -64,6 +64,10 @@ static const char* pick_vec2(ShInfo*f){ static const char *pref[]={"uv","uvCoord
   for(int i=0;pref[i];i++){ Sym*s=fnd(f,pref[i],6); if(s&&s->type==3) return s->name; }
   for(int i=0;i<f->n;i++) if(f->s[i].cls==6&&f->s[i].type==3&&!f->s[i].flag) return f->s[i].name; return 0; }
 static char *gen_fs(ShInfo*f){ char *o=malloc(32768),*p=o; p+=sprintf(p,"#version 120\n"); decls(f,&p,0);
+  /* um varying chamado "col" (ex.: WI_Streamline1) era sombreiado pelo local abaixo -> "col*=col;" virava no-op e o
+     shader cuspia branco opaco (a mancha branca sobre o wallpaper). o #define amarra o nome ao local; se existir
+     varying com o mesmo nome, decls() ja o renomeou (gname) e as linhas de multiply usam gname() -> sem conflito */
+  p+=sprintf(p,"#define col g_col\n");
   const char *tex=0; static const char *tp[]={"tex0","tex","t0","t","DiffuseTex","texture0","s_texture","tex1",0};
   for(int i=0;tp[i]&&!tex;i++){ Sym*s=fnd(f,tp[i],3); if(s&&(s->type==24||s->type==30)) tex=s->name; }
   for(int i=0;i<f->n&&!tex;i++) if(f->s[i].cls==3&&(f->s[i].type==24||f->s[i].type==30)) tex=f->s[i].name;
