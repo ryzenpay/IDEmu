@@ -587,6 +587,7 @@ window.IDE = window.IDE || {};
     ['Marcha à ré em baixa velocidade (<5 km/h) com esterçamento, depois P.', 'Reverse gear at low speed (<5 km/h) with steering, then P.'],
 
     /* ---- server.py, runtime.py, builder.py: fixed messages ---- */
+    ['canal de dados do guest desligado (IDEEMU_DATA_CHANNEL=1)', 'guest data channel is off (IDEEMU_DATA_CHANNEL=1)'],
     ['id inválido', 'Invalid ID'],
     ['ambiente não encontrado', 'Environment not found'],
     ['VIN deve ter 17 caracteres (sem I, O, Q)', 'The VIN must have 17 characters (no I, O, Q)'],
@@ -1126,6 +1127,9 @@ window.IDE = window.IDE || {};
     ['O pen drive ainda não aparece no HMI', 'The USB stick does not show up in the HMI yet'],
     ['O toque ainda não chega ao HMI', 'Touch does not reach the HMI yet'],
     ['Painel virtual pelo CAN e pelo GPS; o HMI não manda conteúdo a ele', 'Virtual panel driven by CAN and GPS; the HMI does not send content to it'],
+    ['Resposta de 0,1 a 0,3 s por toque (medido no iDrive 5++); a tela reflete cada toque na hora', 'Touch response of 0.1 to 0.3 s (measured on iDrive 5++); the screen reflects every tap instantly'],
+    ['Rotor e botões respondem na hora; giro e aperto percorrem menus e páginas, inclusive o app Media', 'Rotor and buttons respond instantly; turning and pressing moves through menus and pages, including the Media app'],
+    ['A interface Media/Radio abre e navega pelo rotor e pelo toque; o motor de mídia do firmware (mcd, MediaPreStarter, NBTMediaMainApp) roda na VM e um pen drive virtual (devb-loopback) monta em /fs/usb0 — mas o MME ainda não fecha o handshake com o HMI: sem fonte USB na tela e sem áudio', 'The Media/Radio interface opens and navigates by rotor and touch; the firmware media engine (mcd, MediaPreStarter, NBTMediaMainApp) runs in the VM and a virtual USB stick (devb-loopback) mounts at /fs/usb0 — but the MME has not closed its handshake with the HMI yet: no USB source on screen and no audio'],
     ['Rotor e botões', 'Rotor and buttons'],
     ['Rádio, mídia e áudio', 'Radio, media and audio'],
     ['Sem CAN virtual', 'No virtual CAN'],
