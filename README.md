@@ -21,7 +21,7 @@ system: the firmware packages do not carry map data and the navigation engine do
 
 ## What you need
 
-* A Mac with Apple Silicon (iDrive 8 uses the Hypervisor framework) and macOS 14 or later — **or Linux x86-64** (developed and tested on WSL2/Ubuntu 22.04, see [Running on Linux](#running-on-linux)). Python 3 (the system one is enough).
+* A Mac with Apple Silicon (iDrive 8 uses the Hypervisor framework) and macOS 14 or later — **or Linux x86-64** (developed and tested on WSL2/Ubuntu 22.04, see [Running on Linux](#running-on-linux); NBT Evo details also in [Linux/WSL](docs/LINUX.md)). Python 3 (the system one is enough).
 * Your **own firmware packages** (PSdZData / SWFL files). The assistant tells you which exact files each iDrive version needs and can scan a folder
   for them. Nothing is modified; images are built in the project folder.
 * A QEMU build: the project uses custom QEMU 11.1.2 builds (OMAP5, SH7785 and `idemu-shm` devices). Source and recipe: [src/qemu](src/qemu) and
@@ -65,6 +65,7 @@ The tarball comes from <https://download.qemu.org>; the scripts build only the p
 * **Virtual controller**: rotor, push, tilt and buttons on screen and on the keyboard; mouse as touch screen.
 * **iDrive Touch Controller** (iDrive 5/6): the touchpad on the controller, with one or two fingers, as the HMI's CarPlay screen and spellers use it; handwriting writes characters in the HMI's spellers (handwriting through macOS Vision, built on first use; `docs/TOUCH_CONTROLLER.md`).
 * **Virtual car**: CAN signals, scenarios, record/replay and a TCP server; GPS with NMEA/UBX output and GPX routes; cluster and HUD views (iDrive 5/6).
+* **Rear-view camera**: your computer's webcam is shown over the display when reverse is engaged on the virtual CAN bus, with parking guide lines (see [docs/CAMERA.md](docs/CAMERA.md)). Host-side overlay: the emulated HMI does not receive the video.
 * **Your own car from its VIN**: the type key (VIN characters 4–7) is decoded with the KIS database of your PSdZData into chassis, body, engine, model year,
   market and iDrive generation, and the new environment is set up to match. iDrive 5/6 head units can be **Navigation Professional**, **Business** or **EntryNav**.
 * **System files, unpacked**: one click extracts the SWFL/HAR packages (or the built image) into normal files you can browse in the app or open in Finder.

@@ -18,7 +18,8 @@ static int unshare(u32 pg){ for(u32 i=0;i<npriv;i++) if(priv_pg[i]==pg) return 0
   memcpy(tmp,(void*)pg,0x1000);
   void*r=mmap((void*)pg,0x1000,0x700,0x80012,-1,0); if((int)r==-1){ br_logx("hook: mmap FAILED",pg,*__get_errno_ptr(),0); munmap(tmp,0x1000); return -1; }
   memcpy((void*)pg,tmp,0x1000); munmap(tmp,0x1000); priv_pg[npriv++]=pg; return 0; }
-int hk_patch(void*target,void*fn){ u32 a=(u32)target&~1u; u32 pg=a&~0xfffu; if(unshare(pg)) return -1; if(((a+7)&~0xfffu)!=pg&&unshare(pg+0x1000)) return -1;
+int hk_patch(void*target,void*fn){ if(!target||!fn){ br_logx("hook: invalid patch target",(u32)target,(u32)fn,0); return -1; }
+  u32 a=(u32)target&~1u; u32 pg=a&~0xfffu; if(unshare(pg)) return -1; if(((a+7)&~0xfffu)!=pg&&unshare(pg+0x1000)) return -1;
   u32 *p=(u32*)a; p[0]=0xe51ff004; p[1]=(u32)fn; return 0; }
 int hk(const char*lib,const char*s,void*fn){ void*t=hk_sym(lib,s); if(!t){ br_logx(s,0xdead,0,0); return -1; } int r=hk_patch(t,fn); br_logx(s,0x600d,(u32)t,r); return r; }
 /* Endereços dentro do HmiMain3D (executável sem símbolos). A tabela embutida é a do HMI validado (idemu/data/known_hmi.json). O builder acha os
@@ -44,7 +45,8 @@ static u32 tramp_ins(u32 a,int i,u32 *t){ u32 ins=((u32*)a)[i];
   if((ins&0xff7f0000)==0xe51f0000&&((ins>>12)&15)!=15){ u32 imm=ins&0xfff,at=a+4*i+8; t[4+i]=*(u32*)((ins&(1u<<23))?at+imm:at-imm); br_logx("hook: literal relocated",a,i,t[4+i]); return 0xe59f0008|(ins&0xf000); }   /* t+4i+8+8 = &t[4+i] */
   if(!(ins&0x0c000000)&&(((ins>>16)&15)==15||(!(ins&0x02000000)&&(ins&15)==15))) br_logx("hook: pc-relative prologue, trampoline may be wrong",a,i,ins);
   return ins; }
-void *hk_tramp(u32 a,void *fn){ u32 *t=(u32*)mmap(0,4096,0x700,0x80002,-1,0); if((int)t==-1){ br_logx("hook: tramp mmap failed",a,0,0); return 0; }
+void *hk_tramp(u32 a,void *fn){ if(!a||!fn){ br_logx("hook: invalid trampoline target",a,(u32)fn,0); return 0; }
+  u32 *t=(u32*)mmap(0,4096,0x700,0x80002,-1,0); if((int)t==-1){ br_logx("hook: tramp mmap failed",a,0,0); return 0; }
   t[0]=tramp_ins(a,0,t); t[1]=tramp_ins(a,1,t); t[2]=0xe51ff004; t[3]=a+8;
   if(hk_patch((void*)a,fn)){ munmap(t,4096); return 0; } return t; }
 /* same, when the second instruction is "ldr rX,[pc,#imm]" (a literal): the tramp loads the same value from its own copy */
