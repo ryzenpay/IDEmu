@@ -9,8 +9,8 @@ Aba **Cluster e HUD** da tela Execução. Desenha o painel de instrumentos (Komb
 | Combustível, temperatura do motor, autonomia, hodômetro, temperatura externa | CAN (`fuel_level`, `coolant_temp`, `odometer`, `outside_temp`); autonomia = litros ÷ consumo instantâneo |
 | Setas e pisca-alerta (piscam), farol baixo e alto | CAN (`turn_left`, `turn_right`, `hazard`, `headlight_*`) |
 | Alertas: cinto, freio de mão, porta, porta-malas, capô, motor quente ou frio, combustível baixo, pneus | Calculados dos sinais (`idemu/cluster.py`, `warnings`) |
-| HUD: velocidade, câmbio, seta de curva e distância | CAN e GPS |
-| Próxima curva e distância no HUD | **Calculadas pela geometria da rota do GPS virtual** (curva = mudança de rumo de 35° ou mais nos próximos 2 km). Sem rota, o HUD mostra só a velocidade e o câmbio |
+| HUD: velocidade num painel escuro, limite de velocidade (SLI), seta de curva, distância e guia de faixas | CAN (`vehicle_speed`, `speed_limit`) e GPS. Sem marcha: o HUD do carro não mostra P/R/N/D |
+| Próxima curva e distância no HUD | **Calculadas pela geometria da rota do GPS virtual** (curva = mudança de rumo de 35° ou mais nos próximos 2 km). Sem rota, o HUD mostra só a chapa da velocidade |
 | Navegação no centro do painel e no HUD (manobra, rua, destino) | **Orientação publicada de fora** (`POST /api/cluster/nav`, `NavFeed` em `idemu/cluster.py`): no carro esse conteúdo vem do HMI quando ele tem guiamento, da navegação nativa ou do CarPlay; aqui quem publica é o plugin **CarPlay Nav** (`plugins/carplay-nav`, docs/CARPLAY.md). Sem atualização por 6 s o feed expira e o HUD volta à curva geométrica |
 
 `GET /api/cluster` entrega tudo isso (ver `docs/API.md`). Mude os sinais na aba CAN, ou rode um cenário, e o painel reage.
@@ -21,7 +21,7 @@ O HMI fala com o Kombi (FBlock MOST `0xE0`) e com o HUD (`0xE1`) pelo V850 emula
 **Medido (2026-11-08, F30 com `id6_light`):** em repouso e abrindo o menu Mídia/Rádio, o HMI **não mandou nada** ao Kombi nem ao HUD. A única mensagem de saída veio do `0xE5/1` (função `0xc30`). O motivo é que o iDrive emulado não tem motor de navegação nem fonte de mídia: quem gera manobras, listas de faixas e mensagens de check control para o cluster é o próprio HMI quando tem esse conteúdo. Se algum dia ele mandar, aparece na lista da aba (com o nome da função, tirado de `idemu/data/hmi_most_map.json`), mas **o layout dos bytes não foi decodificado**: nada disso é desenhado ainda.
 
 ### Limites
-* O desenho é do IDEmu, não o do cluster do carro. A aparência é genérica (dois mostradores), sem os temas Comfort, Sport e Eco Pro.
+* O painel de ponteiros é desenhado a partir das fotos do cluster KOMBI real e dos previews do próprio firmware (`assetDB/Domains/MyVehicle/myv_displays`), mas continua sendo um desenho do IDEmu: sem os temas Sport e Eco Pro, e o digital (Live Cockpit) é genérico. O HUD segue as camadas `Headup_preview` do firmware.
 * Só existe no iDrive 5 e 6 (precisa de CAN e GPS virtuais). No iDrive 7 e 8 a aba fica oculta.
 
 ## Nível de funcionalidade por versão

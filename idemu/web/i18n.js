@@ -1081,6 +1081,7 @@ window.IDE = window.IDE || {};
     ['Eco Pro', 'Eco Pro'],
     ['Sport', 'Sport'],
     ['O cluster e o HUD mostram o carro virtual: velocidade, rotação, câmbio, luzes e alertas vêm do CAN; a posição vem do GPS. Mude os sinais na aba CAN e veja o painel reagir. A próxima curva é calculada pela rota do GPS virtual: o iDrive emulado não tem motor de navegação, então o HMI não manda manobras ao cluster. Quando um provedor externo publica orientação (o plugin CarPlay Nav), o centro do painel mostra a manobra, a rua e o destino.', 'The cluster and the HUD show the virtual car: speed, revs, gear, lights and warnings come from the CAN bus; the position comes from the GPS. Change signals in the CAN tab and watch the panel react. The next turn is computed from the virtual GPS route: the emulated iDrive has no navigation engine, so the HMI does not send maneuvers to the cluster. When an external provider publishes guidance (the CarPlay Nav plugin), the center of the panel shows the maneuver, the street and the destination.'],
+    ['Você chegou', 'You have arrived'],
     ['Cluster (Kombi)', 'Cluster (Kombi)'],
     ['Tela cheia', 'Full screen'],
     ['Cluster e HUD', 'Cluster and HUD'],
