@@ -1,0 +1,31 @@
+# IDEmu in Docker — emulator + web GUI (see docs/DOCKER.md)
+#
+#   1. Point your PSdZData (the ISTA+ SWFL package) at the container — export IDEMU_PSDZ
+#      in a .env file, or create a gitignored docker-compose.override.yml with the real
+#      path (template in docs/DOCKER.md). The folder arrives read-only at /psdzdata.
+#   2. docker compose up -d --build     (first build compiles QEMU — several minutes)
+#   3. Open http://127.0.0.1:8765 and pick /psdzdata in the wizard; environments are
+#      built and kept on the named volume below.
+#
+# QEMU runs under TCG (software emulation): no /dev/kvm, no privileged containers.
+services:
+  ideemu:
+    build: .
+    ports:
+      - "${IDEMU_WEB_PORT:-127.0.0.1:8765}:8765"   # GUI; IDEMU_WEB_PORT=127.0.0.1:8766 if 8765 is busy
+    environment:
+      IDEMU_SMP: "2"                    # TCG multithread on iDrive 5/6
+      # IDEMU_NO_SNAPSHOT: "1"          # never write snapshots (less volume churn)
+      # IDEMU_ANGLE: /angle             # libEGL/libGLESv2 for iDrive 8 (see docs/DOCKER.md)
+    volumes:
+      - ideemu-environments:/app/environments    # built disks, snapshots, logs (2-5 GB per environment)
+      - ideemu-settings:/data                    # settings.json (PSdZData path, map source, ...)
+      # ---- PSdZData (SWFL packages): mount yours here, read-only ----------------------
+      - ${IDEMU_PSDZ:-./psdzdata}:/psdzdata:ro
+      # - ../idplugins:/idplugins:ro             # sibling plugin project (set IDPLUGINS_HOME=/idplugins)
+    shm_size: "2g"                      # POSIX shared memory used by the iDrive 7/8 renderers
+    restart: unless-stopped
+
+volumes:
+  ideemu-environments:
+  ideemu-settings:

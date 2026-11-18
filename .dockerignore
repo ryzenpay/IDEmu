@@ -1,0 +1,25 @@
+# O contexto do build é só o código: nada de estado de máquina, binários da máquina ou segredos locais.
+.git
+/environments/
+/bin/
+/cache/
+/mapcache/
+/packages/
+/settings.json
+/cic/
+/mgu7/
+/mgu22/
+/vendor/
+/psdzdata/
+/idemu/data/phone/
+/idemu/web/themes/nbt_*
+/idemu/web/bezel*.jpg
+/docs/*.png
+**/node_modules/
+**/__pycache__/
+*.pyc
+*.img
+*.log
+*.new
+.DS_Store
+docker-compose.override.yml

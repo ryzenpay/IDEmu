@@ -58,6 +58,16 @@ src/mgu/build.sh    <libc-2.27.so do MGU>          # iDrive 7 guest bits + bin/g
 The tarball comes from <https://download.qemu.org>; the scripts build only the pieces IDEmu needs. On WSL, file pickers use zenity/kdialog and
 `xdg-open`/`wslview` hand folders and URLs to the Windows desktop; the GPU tile in Statistics stays empty until `/dev/dri` or `nvidia-smi` is reachable.
 
+## Running in Docker
+
+```bash
+docker compose up -d --build      # then open http://127.0.0.1:8765
+```
+
+The image compiles the patched QEMU binaries and the renderer itself; no `/dev/kvm` is needed (TCG).
+Mount your PSdZData read-only and choose it in the wizard — see [Docker](docs/DOCKER.md) for the
+compose layout, the override file and which generations need an extra mounted binary.
+
 ## Highlights
 
 * **Real software**: the original HMI binaries run unmodified; hardware that is missing in the VM is replaced by small shims (graphics, window system,
