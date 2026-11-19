@@ -53,9 +53,12 @@ would pick in the desktop wizard. It is mounted read-only; the container never w
 | `/psdzdata` | your PSdZData/SWFL folder | bind mount, read-only |
 | `/app/bin` | the QEMU binaries + glhost baked at image build | part of the image |
 
-Built environments are just files: bind-mount `./environments` instead of the named volume to share
-the ones on your host — but then **do not run the host IDEmu server against the same environments at
-the same time** (snapshot and image files would be raced).
+Built environments are just files, but **do not bind-mount the host's `./environments` into the
+container** even if you never run both at once: container boots run as root and overwrite resume
+snapshots, the HMI hook table and the guest disk images in place — state the host server then
+resumes from is foreign, and the HMI comes up painted-but-frozen (no rotor, no touch). Let the
+container bake its own environments into a named volume; to seed one from the host, copy the
+folder into the volume once (`docker cp`) rather than sharing it.
 
 ## Which generations work out of the box
 
