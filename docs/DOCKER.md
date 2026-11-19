@@ -72,6 +72,7 @@ the same time** (snapshot and image files would be raced).
 
 ## Options
 
+* `IDEMU_WEB_PORT` (in `.env`) — host port the GUI is published on; bare number, default `8765`.
 * `IDEMU_SMP=2` (default in compose) — TCG multithread on NBT Evo; drop to `1` on slow hosts.
 * `IDEMU_NO_SNAPSHOT=1` — never write snapshots (less volume churn).
 * `IDEMU_PSDZ` — host folder for `/psdzdata`.

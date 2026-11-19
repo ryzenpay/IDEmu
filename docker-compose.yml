@@ -12,7 +12,7 @@ services:
   ideemu:
     build: .
     ports:
-      - "${IDEMU_WEB_PORT:-127.0.0.1:8765}:8765"   # GUI; IDEMU_WEB_PORT=127.0.0.1:8766 if 8765 is busy
+      - "127.0.0.1:${IDEMU_WEB_PORT:-8765}:8765"   # host port from .env (IDEMU_WEB_PORT=8766); default 8765
     environment:
       IDEMU_SMP: "2"                    # TCG multithread on iDrive 5/6
       # IDEMU_NO_SNAPSHOT: "1"          # never write snapshots (less volume churn)
