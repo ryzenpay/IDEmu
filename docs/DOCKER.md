@@ -72,7 +72,10 @@ the same time** (snapshot and image files would be raced).
 
 ## Options
 
-* `IDEMU_WEB_PORT` (in `.env`) — host port the GUI is published on; bare number, default `8765`.
+Every supported `IDEMU_*` variable is listed in `docker-compose.yml` under `environment:`,
+pre-filled with its default value — change a value to opt in, leave it alone to keep the default.
+The two compose-interpolation vars live in `.env`: `IDEMU_WEB_PORT` (host port) and `IDEMU_PSDZ`
+(PSdZData folder). Highlights:
 * `IDEMU_SMP=2` (default in compose) — TCG multithread on NBT Evo; drop to `1` on slow hosts.
 * `IDEMU_NO_SNAPSHOT=1` — never write snapshots (less volume churn).
 * `IDEMU_PSDZ` — host folder for `/psdzdata`.

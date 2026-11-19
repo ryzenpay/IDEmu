@@ -14,9 +14,48 @@ services:
     ports:
       - "127.0.0.1:${IDEMU_WEB_PORT:-8765}:8765"   # host port from .env (IDEMU_WEB_PORT=8766); default 8765
     environment:
-      IDEMU_SMP: "2"                    # TCG multithread on iDrive 5/6
-      # IDEMU_NO_SNAPSHOT: "1"          # never write snapshots (less volume churn)
-      # IDEMU_ANGLE: /angle             # libEGL/libGLESv2 for iDrive 8 (see docs/DOCKER.md)
+      # ---------- performance / boot behaviour ----------
+      IDEMU_SMP: "2"                                # guest vCPUs (code default 1; >1 adds tcg,thread=multi)
+      IDEMU_CPU: cortex-a15,cntfrq=6144000,has_el3=off,has_el2=off   # QEMU -cpu for OMAP5 (code default)
+      IDEMU_QEMU_EXTRA: ""                          # extra raw args appended to the QEMU line
+      IDEMU_NO_SNAPSHOT: ""                         # "1" = never save resume snapshots
+      IDEMU_STUB: /app/idemu/data/stub.bin          # stub loader blob (code default, absolute in-container)
+      IDEMU_NO_SHM: ""                              # "1" = force non-POSIX-shm path (iDrive 7/8 renderers)
+      # ---------- guest data / services ----------
+      IDEMU_DATA_CHANNEL: ""                        # "1" = UART1 CAN/GPS feed + /api/guest/exec
+      IDEMU_DATA_DEBUG: ""                          # "1" = log the data channel traffic
+      IDEMU_SSH_TIMEOUT: "30"                       # seconds for the guest SSH bridge
+      IDEMU_REMOTE_PORT: "8772"                     # headless remote-control HTTP server (idemu remote)
+      IDEMU_MAPCACHE: ""                            # map tile cache; empty = built-in /app/mapcache (consider a volume)
+      IDEMU_STTY_WINCH: ""                          # "1" = send SIGWINCH on console resize
+      # ---------- binaries (defaults = what ships in the image) ----------
+      IDEMU_QEMU_ARM: /app/bin/qemu-system-arm      # iDrive 5/6 (omap5-uevm)
+      IDEMU_QEMU_X86: /app/bin/qemu-system-x86_64   # iDrive 7 (idemu-shm)
+      IDEMU_QEMU_AARCH64: /app/bin/qemu-system-aarch64  # iDrive 8 (virt + shm)
+      IDEMU_QEMU_IMG: /usr/bin/qemu-img             # qemu-utils from the runtime image (snapshots, gen 7)
+      # IDEMU_ANGLE: ""                             # folder with libEGL/libGLESv2 for iDrive 8 (default: auto-detect)
+      # IDPLUGINS_HOME: /idplugins                  # default: auto-resolves (repo is /app -> sibling /idplugins)
+      # ---------- HMI boot / bus simulation (advanced; empty = runtime decides) ----------
+      IDEMU_HMI_ON: "on -R 1"                       # how boot.sh powers the HMI (default matches SMP>1)
+      IDEMU_HMI_DELAY: "0"                          # seconds to wait before starting the HMI
+      IDEMU_HMI_TAIL: ""                            # follow HMI stdout to the console
+      IDEMU_NO_HMI: ""                              # "1" = boot services without the HMI
+      IDEMU_CCS35: "0"                              # "1" = enable the CCS 3.5-up property (0xE5.03 .03/.15)
+      IDEMU_V850_EXTERNAL: ""                       # "1" = expect an external cluster simulator
+      IDEMU_RC_TRACE: ""                            # "1" = trace remote-control traffic
+      IDEMU_MOCCA_TRACE: ""                         # "1" = trace MOST MOCCA bus
+      IDEMU_TCPDUMP: ""                             # path = dump guest TCP to file
+      IDEMU_MOST_SERVER: ""                         # MOST loop: use external server endpoint
+      IDEMU_MOST_CLIENT: ""                         # MOST loop: use external client endpoint
+      IDEMU_MOST_DEVICES: core                      # simulated MOST device set (code default)
+      IDEMU_MOST_HEARTBEAT: "0"                     # MOST heartbeat interval (0 = default pacing)
+      # IDEMU_MOST_RATE: ""                         # per-generation message rate (default differs by generation)
+      IDEMU_NAV_DEVICES: "1"                        # number of simulated NAV head units
+      IDEMU_NAV_STATE: "2"                          # initial NAV device state (2 = ready)
+      IDEMU_NAV_SKIP: ""                            # comma list of hex fkt ids to not send
+      IDEMU_KOMBI_SKIP: ""                          # comma list of hex fkt ids to leave at default
+      IDEMU_PHONE_DEVICES: "1"                      # phone-link devices
+      # renderer knobs (GLHOST_VERBOSE, GLHOST_SHOW, GLHOST_NOGL, ...) are passed through if set
     volumes:
       - ideemu-environments:/app/environments    # built disks, snapshots, logs (2-5 GB per environment)
       - ideemu-settings:/data                    # settings.json (PSdZData path, map source, ...)
