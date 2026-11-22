@@ -7,6 +7,8 @@ USAGE = """IDEmu - emulador de head unit BMW iDrive 6 (NBT Evo)
   python3 -m idemu build <id>                      compila o ambiente a partir dos SWFL
   python3 -m idemu run <id>                        inicia o ambiente (Ctrl+C encerra)
   python3 -m idemu ssh <id>                        abre o shell da head unit (ambiente em execução via 'gui' ou 'run')
+  python3 -m idemu remote <id> [serve|press <botoes...>|screen <arquivo>] [--port N]
+                                                   controle sem interface (HTTP 127.0.0.1 + CLI): teclas e fotos da tela
 """
 
 def main(argv):
@@ -44,6 +46,9 @@ def main(argv):
                 time.sleep(2)
         except KeyboardInterrupt: pass
         A.stop(); return 0
+    if cmd == 'remote':
+        from . import hmihead
+        return hmihead.main(argv[1:])
     print(USAGE); return 1
 
 if __name__ == '__main__':
