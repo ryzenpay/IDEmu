@@ -2,7 +2,9 @@
 
 Fontes, todas do próprio firmware:
   * parâmetros/valores/posição: dicionário CODING_FEATURE da libhmicoding (idemu/data/coding_dict.json.z, via codegen);
-  * grupo do CAFD e valor de fábrica: símbolos nbtSysetDefaults_getCbf<GRUPO>_CB_F<NOME> da mesma biblioteca (extraídos do SWFL do ambiente).
+  * grupo do CAFD e valor de fábrica: símbolos nbtSysetDefaults_getCbf<GRUPO>_CB_F<NOME> da mesma biblioteca (extraídos do SWFL do ambiente);
+  * nome, descrição e rótulo por valor em inglês: idemu/data/coding_gloss.json (definições do NBT EVO Toolkit, MIT; junta por token BMW,
+    checando a largura do campo — ver _gloss_get e tools/build_coding_gloss.py).
 
 "Flash" = grava a codificação em env.json, regenera coding.tab em shim.img e reinicia a head unit; o HMI lê a tabela ao subir (src/shim/hook.c)."""
 import json, os, re, shutil, struct, tempfile, time
@@ -114,6 +116,37 @@ def value_label(param, raw):
     return raw.replace('_', ' ')
 
 
+_GLOSS = None
+
+
+def load_gloss():
+    """Definições legíveis do NBT EVO Toolkit (MIT), unidas ao dicionário pelo token BMW.
+    idemu/data/coding_gloss.json, gerado por tools/build_coding_gloss.py; None = sem glossário instalado."""
+    global _GLOSS
+    if _GLOSS is None:
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'coding_gloss.json'), encoding='utf-8') as f:
+                _GLOSS = json.load(f).get('defs') or {}
+        except (OSError, ValueError):
+            _GLOSS = {}
+    return _GLOSS or None
+
+
+def _gloss_get(name, bits):
+    """Definição do glossário para um parâmetro, ou None. Só vale se a largura do campo bater: o CAFD do toolkit
+    (00001EF6) e o dicionário da libhmicoding do ambiente podem divergir, e nesse caso o rótulo não é do mesmo campo."""
+    g = load_gloss()
+    e = g.get(name) if g else None
+    if not e or e.get('bits') != bits:
+        return None
+    return e
+
+
+def _gloss_value(e, val):
+    """Rótulo do glossário para um valor numérico, se houver ('values' é keyed pelo número em decimal)."""
+    return (e.get('values') or {}).get(str(val))
+
+
 def _read_defaults(lib_path):
     """(nome -> grupo, nome -> valor de fábrica) dos símbolos nbtSysetDefaults_getCbf<GRUPO>_CB_F<NOME> (funções 'mov r0,#v; bx lr'), sem depender de bibliotecas de ELF."""
     d = open(lib_path, 'rb').read()
@@ -182,7 +215,7 @@ def load_meta(env, env_dir, refresh=False):
     return m
 
 
-def _options(name, rows):
+def _options(name, rows, gloss=None):
     seen, out = set(), []
     for y in rows:
         raw = y['value']
@@ -190,7 +223,8 @@ def _options(name, rows):
         if short == 'VariantVal' or y['val'] in seen:
             continue
         seen.add(y['val'])
-        out.append({'value': y['val'], 'raw': short, 'label': value_label(name, short)})
+        label = (_gloss_value(gloss, y['val']) if gloss else None) or value_label(name, short)
+        out.append({'value': y['val'], 'raw': short, 'label': label})
     return sorted(out, key=lambda o: o['value'])
 
 
@@ -218,13 +252,18 @@ def describe(env, env_dir):
         if e.get('end', e['byte']) > e['byte'] or e['mask'] == 0:
             continue                # campos de mais de um byte: a tabela do guest só grava um byte por parâmetro
         bits = bin(e['mask']).count('1')
-        opts = _options(name, rows)
+        g = _gloss_get(name, bits)
+        opts = _options(name, rows, g)
         factory = meta['defaults'].get(name)
         if factory is None:
             factory = opts[0]['value'] if opts and len(opts) == 1 else None
         cur = _current_of(name, prof[name], rows) if name in prof else None
         p = popular.get(name)
-        out.append({'name': name, 'label': p[2] if p else _humanize(name), 'desc': p[3] if p else '', 'popular': p[1] if p else None,
+        # nome/descrição: POPULAR (curadoria do IDEmu) primeiro; o glossário cobre o resto (e o que POPULAR não descreve)
+        label = p[2] if p else (g.get('name') if g and g.get('name') else _humanize(name))
+        desc = ' · '.join(x for x in ((p[3] if p else ''), (g.get('description') if g else '')) if x)
+        out.append({'name': name, 'label': label, 'desc': desc, 'popular': p[1] if p else None,
+                    'gloss': g.get('confidence') if g else None, 'source': g.get('source') if g else None,
                     'group': meta['groups'].get(name, 'OTHER'), 'bits': bits, 'max': (1 << bits) - 1, 'options': opts,
                     'factory': factory, 'value': cur if cur is not None else factory, 'coded': name in prof})
     groups = sorted({x['group'] for x in out})
